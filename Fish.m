@@ -11,6 +11,7 @@ function key = wait_for_key(figure_handle, valid_keys)
     setappdata(figure_handle, "last_key", "");
     while isempty(key) && ishandle(figure_handle)
         pause(0.05);
+        update_music(figure_handle);
         candidate = getappdata(figure_handle, "last_key");
         if ismember(candidate, valid_keys)
             key = candidate;
@@ -19,6 +20,100 @@ function key = wait_for_key(figure_handle, valid_keys)
     if ~ishandle(figure_handle)
         key = "escape";
     endif
+endfunction
+
+function register_zone(figure_handle, left, right, bottom, top, click_key, owner_handle)
+    zones = getappdata(figure_handle, "click_zones");
+    if isempty(zones)
+        zones = cell(0, 6);
+    endif
+    keep = false(1, size(zones, 1));
+    for k = 1:size(zones, 1)
+        keep(k) = ishandle(zones{k, 6});
+    endfor
+    zones = zones(keep, :);
+    zones(end + 1, :) = {left, right, bottom, top, click_key, owner_handle};
+    setappdata(figure_handle, "click_zones", zones);
+endfunction
+
+function click_handler(figure_handle, mouse_event)
+    zones = getappdata(figure_handle, "click_zones");
+    axes_handle = getappdata(figure_handle, "main_axes");
+    if isempty(zones) || isempty(axes_handle) || ~ishandle(axes_handle)
+        return;
+    endif
+    point = get(axes_handle, "CurrentPoint");
+    x = point(1, 1);
+    y = point(1, 2);
+    for k = size(zones, 1):-1:1
+        if ishandle(zones{k, 6}) && x >= zones{k, 1} && x <= zones{k, 2} && ...
+           y >= zones{k, 3} && y <= zones{k, 4}
+            setappdata(figure_handle, "last_key", zones{k, 5});
+            return;
+        endif
+    endfor
+endfunction
+
+function [wave, fs] = generate_music()
+    fs = 8000;
+    note_len = 0.35;
+    t = (0:round(note_len * fs) - 1) / fs;
+    note_env = sin(pi * t / note_len) .^ 2;
+    chords = [220.00 261.63 329.63 440.00;
+              174.61 220.00 261.63 349.23;
+              261.63 329.63 392.00 523.25;
+              196.00 246.94 293.66 392.00];
+    pattern = [1 2 3 4 3 2 3 4];
+    wave = [];
+    for c = 1:4
+        segment = [];
+        for repeat = 1:2
+            for k = pattern
+                f = chords(c, k);
+                segment = [segment, (0.20 * sin(2*pi*f*t) + 0.07 * sin(2*pi*2*f*t)) .* note_env];
+            endfor
+        endfor
+        tb = (0:numel(segment) - 1) / fs;
+        bass = 0.15 * sin(2*pi*(chords(c, 1) / 2) * tb) .* sin(pi * tb / tb(end)) .^ 2;
+        wave = [wave, segment + bass];
+    endfor
+    wave = 0.35 * wave / max(abs(wave));
+endfunction
+
+function player = make_music_player(music_file)
+    player = [];
+    try
+        if exist(music_file, "file") == 2
+            [wave, fs] = audioread(music_file);
+            wave = mean(wave, 2);
+        else
+            [wave, fs] = generate_music();
+        endif
+        player = audioplayer(wave, fs);
+    catch
+        player = [];
+    end_try_catch
+endfunction
+
+function update_music(figure_handle)
+    if ~ishandle(figure_handle)
+        return;
+    endif
+    player = getappdata(figure_handle, "music_player");
+    if isempty(player) || ~isequal(getappdata(figure_handle, "sound_ok"), 1)
+        return;
+    endif
+    try
+        if isequal(getappdata(figure_handle, "sound_on"), 1)
+            if ~isplaying(player)
+                play(player);
+            endif
+        elseif isplaying(player)
+            stop(player);
+        endif
+    catch
+        setappdata(figure_handle, "music_player", []);
+    end_try_catch
 endfunction
 
 function species_table = get_species_table()
@@ -130,6 +225,14 @@ function [x, y, fish_size, direction, speed, species] = spawn_enemy(player_size,
             x = -4 * fish_size;
         else
             x = world_width + 4 * fish_size;
+        endif
+        if hypot(x - player_x, y - player_y) < 8 + 5 * fish_size
+            direction = -direction;
+            if direction == 1
+                x = -4 * fish_size;
+            else
+                x = world_width + 4 * fish_size;
+            endif
         endif
     endif
 endfunction
@@ -414,7 +517,9 @@ function play_sfx(figure_handle, kind)
             return;
     endswitch
     try
-        sound(wave, fs);
+        sfx_player = audioplayer(wave, fs);
+        play(sfx_player);
+        setappdata(figure_handle, "sfx_player", sfx_player);
     catch
         setappdata(figure_handle, "sound_ok", 0);
     end_try_catch
@@ -441,6 +546,7 @@ function button_handles = make_button(figure_handle, axes_handle, center_x, cent
                         "VerticalAlignment", "middle", "FontUnits", "normalized", ...
                         "FontSize", font_size, "FontWeight", "bold", "Color", [1 1 1], ...
                         "HitTest", "off", "Parent", axes_handle);
+    register_zone(figure_handle, left, right, bottom, top, click_key, body);
     button_handles = [shadow, body, shine, label_handle];
 endfunction
 
@@ -494,7 +600,7 @@ function menu_handles = draw_title_menu(figure_handle, axes_handle)
     menu_handles(end + 1) = patch("XData", [0 100 100 0], "YData", [4 4 10 10], "FaceColor", [0 0.05 0.15], ...
                                   "FaceAlpha", 0.35, "EdgeColor", "none", "HitTest", "off", ...
                                   "Parent", axes_handle);
-    menu_handles(end + 1) = text(50, 7, "ENTER / SPACE = play     S = settings     M = sound on/off     ESC = quit", ...
+    menu_handles(end + 1) = text(50, 7, "CLICK PLAY (or ENTER)     S = settings     M = sound on/off     ESC = quit", ...
         "HorizontalAlignment", "center", "VerticalAlignment", "middle", "FontUnits", "normalized", ...
         "FontSize", 0.028, "Color", [0.85 0.95 1], "HitTest", "off", "Parent", axes_handle);
 endfunction
@@ -517,11 +623,11 @@ function show_settings(figure_handle, axes_handle)
              42.0, "Cross 5 levels. In each one, eat smaller fish to grow,", 0;
              39.1, "then beat the BOSS: get bigger than it and EAT it!", 0;
              34.4, "HOW TO PLAY", 1;
-             31.0, "Swim: arrow keys or Z Q S D / W A S D    -    SPACE: stop", 0;
+             31.0, "Swim: arrow keys  or  Z Q S D  /  W A S D", 0;
              28.1, "Green = edible    Yellow = same size    Red = DANGER", 0;
              25.2, "Red fish hunt you and bite: you lose a life and shrink", 0;
              22.3, "Red dashed line = the boss is about to charge!", 0;
-             19.4, "P = settings during the game    -    ESC = quit", 0 };
+             19.4, "SPACE = stop   P = settings   M = sound/music on-off   ESC = quit", 0 };
     for r = 1:size(rows, 1)
         if rows{r, 3}
             text_color = [1 0.85 0.2];
@@ -760,7 +866,7 @@ function [outcome, final_score] = play_round(figure_handle, axes_handle, level, 
 
     patch("XData", [0 38 38 0], "YData", [46.5 46.5 60 60], "FaceColor", [0 0.05 0.15], ...
           "FaceAlpha", 0.55, "EdgeColor", "none", "Parent", axes_handle);
-    patch("XData", [40 100 100 40], "YData", [54 54 60 60], "FaceColor", [0 0.05 0.15], ...
+    patch("XData", [62 100 100 62], "YData", [54 54 60 60], "FaceColor", [0 0.05 0.15], ...
           "FaceAlpha", 0.55, "EdgeColor", "none", "Parent", axes_handle);
     text(2, 57.6, sprintf("LEVEL %d/%d - %s", level, level_count, level_names{level}), ...
          "Parent", axes_handle, "FontUnits", "normalized", "FontSize", 0.032, "FontWeight", "bold", ...
@@ -777,23 +883,14 @@ function [outcome, final_score] = play_round(figure_handle, axes_handle, level, 
         life_body(k) = patch("XData", bx, "YData", by, "FaceColor", [1 0.65 0.1], ...
                              "EdgeColor", [0.4 0.2 0], "Parent", axes_handle);
     endfor
-    best_hud = text(42, 57, "", "Parent", axes_handle, "FontUnits", "normalized", ...
+    best_hud = text(64, 57, "", "Parent", axes_handle, "FontUnits", "normalized", ...
                     "FontSize", 0.03, "FontWeight", "bold", "Color", [1 0.9 0.5], ...
                     "VerticalAlignment", "middle");
-    text(64.5, 57, "SIZE", "Parent", axes_handle, "FontUnits", "normalized", ...
-         "FontSize", 0.03, "Color", [1 1 1], "HorizontalAlignment", "right", ...
-         "VerticalAlignment", "middle");
-    patch("XData", [66 88 88 66], "YData", [55.2 55.2 58.8 58.8], "FaceColor", [0.2 0.3 0.4], ...
-          "EdgeColor", [1 1 1], "Parent", axes_handle);
-    progress_bar = patch("XData", [66 66 66 66], "YData", [55.2 55.2 58.8 58.8], ...
-                         "FaceColor", [1 0.8 0.1], "EdgeColor", "none", "Parent", axes_handle);
-    trigger_x = 66 + 22 * boss_trigger / boss_win_size;
-    line("XData", [trigger_x trigger_x], "YData", [54.8 59.2], "Color", [1 1 1], ...
-         "LineWidth", 2, "Parent", axes_handle);
-    patch("XData", [91 98 98 91], "YData", [54.3 54.3 59.7 59.7], "FaceColor", [0.10 0.22 0.38], ...
+    gear_button = patch("XData", [91 98 98 91], "YData", [54.3 54.3 59.7 59.7], "FaceColor", [0.10 0.22 0.38], ...
           "FaceAlpha", 0.9, "EdgeColor", [1 1 1], "LineWidth", 1.5, ...
           "ButtonDownFcn", @(src, evt) setappdata(figure_handle, "last_key", "click_settings"), ...
           "Parent", axes_handle);
+    register_zone(figure_handle, 89, 100, 52, 60, "click_settings", gear_button);
     gear_icon = draw_gear(axes_handle, 94.5, 57, 2.1, [0.9 0.92 0.95], [0.10 0.22 0.38]);
     set(gear_icon, "HitTest", "off");
 
@@ -1210,13 +1307,12 @@ function [outcome, final_score] = play_round(figure_handle, axes_handle, level, 
                 set([life_body(k), life_fins(k)], "Visible", "off");
             endif
         endfor
-        progress_ratio = min(player_size / boss_win_size, 1);
-        set(progress_bar, "XData", [66, 66 + 22 * progress_ratio, 66 + 22 * progress_ratio, 66]);
         if displayed_score < score
             displayed_score = min(score, displayed_score + max(1, ceil((score - displayed_score) * 0.2)));
         endif
         set(score_hud, "String", sprintf("SCORE  %d", displayed_score));
         set(best_hud, "String", sprintf("BEST %d", max(best_score, score)));
+        update_music(figure_handle);
         drawnow;
         pause(frame_pause);
 
@@ -1243,22 +1339,38 @@ keep_playing    = true;
 close all;
 figure_handle = figure("Name", "Abyss Feast", "NumberTitle", "off", ...
                        "Color", [0.05 0.2 0.35], "Resize", "on", ...
-                       "KeyPressFcn", @key_handler);
+                       "KeyPressFcn", @key_handler, ...
+                       "WindowButtonDownFcn", @click_handler);
 axes_handle = axes("Parent", figure_handle, "Position", [0 0 1 1], "XLim", [0 100], ...
                    "YLim", [0 60], "XTick", [], "YTick", [], "Color", [0.45 0.75 0.95], ...
                    "Box", "on");
 hold(axes_handle, "on");
+setappdata(figure_handle, "main_axes", axes_handle);
 
 setappdata(figure_handle, "sound_on", 1);
 setappdata(figure_handle, "sound_ok", 1);
+
+music_name = "abyss_music.wav";
+music_file = music_name;
+try
+    script_folder = fileparts(mfilename("fullpath"));
+    if ~isempty(script_folder) && exist(fullfile(script_folder, music_name), "file") == 2
+        music_file = fullfile(script_folder, music_name);
+    endif
+catch
+end_try_catch
+music_player = make_music_player(music_file);
+setappdata(figure_handle, "music_player", music_player);
+update_music(figure_handle);
+
 draw_sea_background(axes_handle, 1);
 menu_handles = draw_title_menu(figure_handle, axes_handle);
 in_menu = true;
 while in_menu && ishandle(figure_handle)
-    key = wait_for_key(figure_handle, {"click_play", "space", "return", "click_settings", ...
+    key = wait_for_key(figure_handle, {"click_play", "return", "click_settings", ...
                                        "s", "m", "escape"});
     switch key
-        case {"click_play", "space", "return"}
+        case {"click_play", "return"}
             in_menu = false;
         case {"click_settings", "s"}
             show_settings(figure_handle, axes_handle);
@@ -1324,3 +1436,7 @@ if ishandle(figure_handle)
     pause(1.5);
     close(figure_handle);
 endif
+try
+    stop(music_player);
+catch
+end_try_catch
