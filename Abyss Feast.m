@@ -30,14 +30,10 @@ function species_table = get_species_table()
                      0.95 0.85 0.50 0.55 1.15 1.05 1.00 2];
 endfunction
 
-function [body_x, body_y, fins_x, fins_y, stripe_x, stripe_y, eye_x, eye_y, ...
-          teeth_x, teeth_y, brow_x, brow_y] = ...
-        fish_shape(x, y, fish_size, direction, wiggle, species, fierce)
+function [body_x, body_y, fins_x, fins_y, stripe_x, stripe_y, eye_x, eye_y] = ...
+        fish_shape(x, y, fish_size, direction, wiggle, species)
     if nargin < 6
         species = 1;
-    endif
-    if nargin < 7
-        fierce = 1;
     endif
     species_table = get_species_table();
     len         = species_table(species, 1);
@@ -85,47 +81,18 @@ function [body_x, body_y, fins_x, fins_y, stripe_x, stripe_y, eye_x, eye_y, ...
 
     eye_x = x + direction * 0.55 * len * fish_size;
     eye_y = y + 0.33 * hgt * fish_size;
-
-    tooth_count = 4;
-    effective_h = max(hgt, 0.45);
-    mouth_y     = -0.10 * hgt;
-    tooth_gap   = 0.04 * effective_h * fierce;
-    tooth_h     = 0.20 * effective_h * fierce;
-    tooth_width = (0.88 - 0.45) / tooth_count;
-    teeth_ux = zeros(3, 2 * tooth_count);
-    teeth_uy = zeros(3, 2 * tooth_count);
-    for t = 1:tooth_count
-        u_a = 0.45 + (t - 1) * tooth_width;
-        u_b = u_a + tooth_width;
-        teeth_ux(:, t) = [u_a; u_b; (u_a + u_b) / 2];
-        teeth_uy(:, t) = [mouth_y + tooth_gap; mouth_y + tooth_gap; mouth_y + tooth_gap - tooth_h];
-        teeth_ux(:, tooth_count + t) = [u_a + tooth_width / 2; u_b + tooth_width / 2; u_a + tooth_width];
-        teeth_uy(:, tooth_count + t) = [mouth_y - tooth_gap; mouth_y - tooth_gap; mouth_y - tooth_gap + tooth_h];
-    endfor
-    teeth_x = x + direction * fish_size * len * teeth_ux;
-    teeth_y = y + fish_size * teeth_uy;
-
-    brow_x = x + direction * fish_size * len * [0.40 0.72];
-    brow_y = y + fish_size * hgt * [0.61 0.43];
 endfunction
 
-function [spikes_x, spikes_y] = boss_spikes(x, y, fish_size, direction, species)
+function [teeth_x, teeth_y, brow_x, brow_y] = fish_menace(x, y, fish_size, direction, species)
     species_table = get_species_table();
     len = species_table(species, 1);
     hgt = species_table(species, 2);
-    spike_count = 6;
-    u_edges = linspace(-0.65, 0.50, spike_count + 1);
-    spikes_x = zeros(3, spike_count);
-    spikes_y = zeros(3, spike_count);
-    for k = 1:spike_count
-        u_a = u_edges(k);
-        u_b = u_edges(k + 1);
-        u_mid = (u_a + u_b) / 2;
-        spikes_x(:, k) = x + direction * fish_size * len * [u_a; u_b; u_mid - 0.05];
-        spikes_y(:, k) = y + fish_size * [0.9 * hgt * sqrt(1 - u_a^2); ...
-                                          0.9 * hgt * sqrt(1 - u_b^2); ...
-                                          hgt * sqrt(1 - u_mid^2) + 0.4 * max(hgt, 0.5)];
-    endfor
+    teeth_u = [0.97 0.90 0.84 0.78 0.72 0.66 0.60 0.54];
+    teeth_v = [-0.02 -0.34 -0.10 -0.40 -0.14 -0.42 -0.16 -0.32];
+    teeth_x = x + direction * fish_size * len * teeth_u;
+    teeth_y = y + fish_size * hgt * teeth_v;
+    brow_x = x + direction * fish_size * len * [0.34 0.80];
+    brow_y = y + fish_size * hgt * [0.66 0.40];
 endfunction
 
 function hit = fish_overlap(player_x, player_y, player_size, fish_x, fish_y, fish_size, fish_species)
@@ -141,20 +108,20 @@ function [x, y, fish_size, direction, speed, species] = spawn_enemy(player_size,
         speed_factor, small_probability, allowed_species, world_width, world_height, ...
         player_x, player_y, initial_placement)
     species = allowed_species(randi(numel(allowed_species)));
-    species_speed = [1.0 0.7 1.2 1.5 1.0 0.6];
+    species_speed = [1.0 0.8 1.25 1.5 1.15 0.8];
     if rand < small_probability
         fish_size = player_size * (0.45 + 0.45 * rand);
     else
-        fish_size = player_size * (1.15 + 0.90 * rand);
+        fish_size = player_size * (1.2 + 1.0 * rand);
     endif
-    fish_size = min(max(fish_size, 0.8), 12);
+    fish_size = min(max(fish_size, 0.8), 14);
     direction = 2 * (rand > 0.5) - 1;
-    speed     = speed_factor * species_speed(species) * (0.25 + 0.50 * rand);
-    speed     = min(speed, 1.7);
+    speed     = speed_factor * species_speed(species) * (0.35 + 0.60 * rand);
+    speed     = min(speed, 1.6);
     y         = 7 + (world_height - 18) * rand;
     if initial_placement
         x = world_width * rand;
-        while hypot(x - player_x, y - player_y) < 25
+        while hypot(x - player_x, y - player_y) < 22
             x = world_width * rand;
             y = 7 + (world_height - 18) * rand;
         endwhile
@@ -348,28 +315,29 @@ function [outcome, final_score] = play_round(figure_handle, axes_handle, level, 
     level_names       = {"Sunny Reef", "Kelp Forest", "Sunken Ship", "Magma Trench", "The Abyss"};
     boss_names        = {"Giant Puffer", "Barracuda", "Moray Boss", "Anglerfish King", "Megalodon"};
     boss_species_list = [2 4 3 6 5];
-    boss_size_list    = [8.5 9.5 10.0 10.5 11.5];
-    boss_trigger_list = [6.0 6.5 7.0 7.5 8.0];
-    boss_speed_list   = [0.55 0.62 0.68 0.74 0.80];
-    telegraph_list    = [30 26 22 18 14];
-    dash_wait_list    = [110 95 80 65 50];
+    boss_size_list    = [8.5 9.5 10.5 11.5 12.5];
+    boss_trigger_list = [6.0 7.0 8.0 9.0 10.0];
+    boss_speed_list   = [0.60 0.70 0.78 0.85 0.90];
+    telegraph_list    = [28 24 20 16 13];
+    dash_wait_list    = [110 95 80 68 56];
     small_prob_list   = [0.55 0.50 0.45 0.40 0.35];
-    combo_list        = [1 1 2 2 3];
-    species_lists     = {[1 1 2], [1 2 4], [1 3 4 2], [1 3 4 6], [1 2 3 4 5]};
+    species_lists     = {[1 2 4 1], [1 3 4 5], [3 4 5 5 6], [3 4 5 6 6], [3 4 5 5 6 6]};
+    combo_list        = [0 0 1 1 2];
+    lives_list        = [3 3 3 2 2];
+    hunt_radius_list  = [28 32 36 40 45];
+    hunt_boost_list   = [1.0 1.1 1.2 1.3 1.4];
 
     world_width     = 100;
     world_height    = 60;
     start_size      = 2;
-    growth_ratio    = 0.18;
-    initial_lives   = 3;
+    growth_ratio    = 0.15;
+    initial_lives   = lives_list(level);
     base_speed      = 1.2;
     frame_pause     = 0.02;
     size_tolerance  = 1.05;
-    enemy_count     = round(8 + 1.6 * level);
-    speed_factor    = 1 + 0.25 * (level - 1);
+    enemy_count     = round(9 + 1.5 * level);
+    speed_factor    = 1 + 0.20 * (level - 1);
     level_count     = numel(level_names);
-    hunt_strength   = 0.06 + 0.03 * level;
-    flee_strength   = 0.10;
 
     boss_species    = boss_species_list(level);
     boss_size       = boss_size_list(level);
@@ -377,10 +345,12 @@ function [outcome, final_score] = play_round(figure_handle, axes_handle, level, 
     boss_speed      = boss_speed_list(level);
     telegraph_frames = telegraph_list(level);
     dash_wait       = dash_wait_list(level);
-    combo_count     = combo_list(level);
     small_probability = small_prob_list(level);
     allowed_species = species_lists{level};
     boss_win_size   = boss_size * size_tolerance;
+    boss_combo_max  = combo_list(level);
+    hunt_radius     = hunt_radius_list(level);
+    hunt_boost      = hunt_boost_list(level);
 
     player_x     = world_width / 2;
     player_y     = world_height / 2;
@@ -401,8 +371,7 @@ function [outcome, final_score] = play_round(figure_handle, axes_handle, level, 
     boss_mode    = "chase";
     boss_timer   = dash_wait;
     dash_vector  = [1 0];
-    boss_velocity = [0 0];
-    boss_combo_left = 0;
+    boss_combo   = 0;
 
     burst_age     = 0;
     burst_x       = 0;
@@ -441,6 +410,10 @@ function [outcome, final_score] = play_round(figure_handle, axes_handle, level, 
                       "Marker", "o", "MarkerSize", 7, "Color", theme.bubble_color, ...
                       "Parent", axes_handle);
 
+    boss_dark = patch("XData", [0 100 100 0], "YData", [0 0 60 60], "FaceColor", [0 0 0], ...
+                      "FaceAlpha", 0.22, "EdgeColor", "none", "Visible", "off", ...
+                      "Parent", axes_handle);
+
     [bx, by, fx, fy, sx, sy, ex, ey] = fish_shape(player_x, player_y, player_size, player_dir_x, 0);
     player_fins   = patch("XData", fx, "YData", fy, "FaceColor", [0.85 0.35 0.05], ...
                           "EdgeColor", [0.4 0.2 0], "Parent", axes_handle);
@@ -461,66 +434,57 @@ function [outcome, final_score] = play_round(figure_handle, axes_handle, level, 
     enemy_body    = zeros(1, enemy_count);
     enemy_fins    = zeros(1, enemy_count);
     enemy_stripe  = zeros(1, enemy_count);
-    enemy_teeth   = zeros(1, enemy_count);
     enemy_eye     = zeros(1, enemy_count);
+    enemy_teeth   = zeros(1, enemy_count);
     enemy_brow    = zeros(1, enemy_count);
     for i = 1:enemy_count
         [enemy_x(i), enemy_y(i), enemy_size(i), enemy_dir(i), enemy_speed(i), enemy_species(i)] = ...
             spawn_enemy(player_size, speed_factor, small_probability, allowed_species, ...
                         world_width, world_height, player_x, player_y, true);
-        [bx, by, fx, fy, sx, sy, ex, ey, tx, ty, brx, bry] = fish_shape(enemy_x(i), enemy_y(i), ...
-            enemy_size(i), enemy_dir(i), 0, enemy_species(i), 1);
+        [bx, by, fx, fy, sx, sy, ex, ey] = fish_shape(enemy_x(i), enemy_y(i), enemy_size(i), ...
+                                                      enemy_dir(i), 0, enemy_species(i));
         enemy_fins(i)   = patch("XData", fx, "YData", fy, "FaceColor", [0.5 0.5 0.5], ...
                                 "EdgeColor", [0.15 0.15 0.15], "Parent", axes_handle);
         enemy_body(i)   = patch("XData", bx, "YData", by, "FaceColor", [0.5 0.5 0.5], ...
                                 "EdgeColor", [0.15 0.15 0.15], "Parent", axes_handle);
         enemy_stripe(i) = patch("XData", sx, "YData", sy, "FaceColor", [0.4 0.4 0.4], ...
                                 "EdgeColor", "none", "Parent", axes_handle);
-        enemy_teeth(i)  = patch("XData", tx, "YData", ty, "FaceColor", [1 1 0.92], ...
-                                "EdgeColor", [0.25 0.1 0.1], "Parent", axes_handle);
         enemy_eye(i)    = line("XData", ex, "YData", ey, "LineStyle", "none", "Marker", "o", ...
-                               "MarkerSize", 5, "MarkerFaceColor", [1 0.85 0.1], "Color", [0 0 0], ...
+                               "MarkerSize", 4, "MarkerFaceColor", [1 1 1], "Color", [0 0 0], ...
                                "Parent", axes_handle);
-        enemy_brow(i)   = line("XData", brx, "YData", bry, "Color", [0.08 0 0], "LineWidth", 2, ...
-                               "Parent", axes_handle);
+        [tx, ty, brx, bry] = fish_menace(enemy_x(i), enemy_y(i), enemy_size(i), enemy_dir(i), ...
+                                         enemy_species(i));
+        enemy_teeth(i)  = line("XData", tx, "YData", ty, "Color", [1 1 1], "LineWidth", 1.5, ...
+                               "Visible", "off", "Parent", axes_handle);
+        enemy_brow(i)   = line("XData", brx, "YData", bry, "Color", [0.1 0 0], "LineWidth", 2.5, ...
+                               "Visible", "off", "Parent", axes_handle);
     endfor
 
-    boss_table = get_species_table();
-    boss_len = boss_table(boss_species, 1);
-    boss_hgt = boss_table(boss_species, 2);
-    [bx, by, fx, fy, sx, sy, ex, ey, tx, ty, brx, bry] = fish_shape(0, 0, boss_size, 1, 0, boss_species, 2);
-    [spx, spy] = boss_spikes(0, 0, boss_size, 1, boss_species);
-    boss_dark   = patch("XData", [0 100 100 0], "YData", [0 0 60 60], "FaceColor", [0.25 0 0], ...
-                        "FaceAlpha", 0.15, "EdgeColor", "none", "Visible", "off", "Parent", axes_handle);
-    boss_aura   = patch("XData", bx, "YData", by, "FaceColor", [1 0 0], "FaceAlpha", 0.25, ...
-                        "EdgeColor", "none", "Visible", "off", "Parent", axes_handle);
+    [bx, by, fx, fy, sx, sy, ex, ey] = fish_shape(0, 0, boss_size, 1, 0, boss_species);
+    [tx, ty, brx, bry] = fish_menace(0, 0, boss_size, 1, boss_species);
+    boss_aura   = patch("XData", 1.3 * bx, "YData", 1.3 * by, "FaceColor", [1 0 0], ...
+                        "FaceAlpha", 0.2, "EdgeColor", "none", "Visible", "off", "Parent", axes_handle);
     boss_aim    = line("XData", [0 0], "YData", [0 0], "Color", [1 0.2 0.2], "LineStyle", "--", ...
                        "LineWidth", 2, "Visible", "off", "Parent", axes_handle);
-    boss_spike_patch = patch("XData", spx, "YData", spy, "FaceColor", [0.25 0.02 0.05], ...
-                        "EdgeColor", [0.05 0 0], "Visible", "off", "Parent", axes_handle);
     boss_fins   = patch("XData", fx, "YData", fy, "FaceColor", [0.4 0.07 0.14], ...
                         "EdgeColor", [0.1 0 0], "LineWidth", 2, "Visible", "off", "Parent", axes_handle);
     boss_body   = patch("XData", bx, "YData", by, "FaceColor", [0.55 0.10 0.20], ...
                         "EdgeColor", [0.1 0 0], "LineWidth", 2.5, "Visible", "off", "Parent", axes_handle);
     boss_stripe = patch("XData", sx, "YData", sy, "FaceColor", [0.4 0.07 0.14], ...
                         "EdgeColor", "none", "Visible", "off", "Parent", axes_handle);
-    boss_scar   = line("XData", [0 0], "YData", [0 0], "Color", [0.95 0.85 0.75], "LineWidth", 2.5, ...
-                       "Visible", "off", "Parent", axes_handle);
-    boss_teeth  = patch("XData", tx, "YData", ty, "FaceColor", [1 1 0.9], "EdgeColor", [0.3 0.05 0.05], ...
-                        "LineWidth", 1.5, "Visible", "off", "Parent", axes_handle);
     boss_eye    = line("XData", ex, "YData", ey, "LineStyle", "none", "Marker", "o", ...
-                       "MarkerSize", 13, "MarkerFaceColor", [1 0.1 0.05], "Color", [0 0 0], ...
-                       "Visible", "off", "Parent", axes_handle);
-    boss_brow   = line("XData", brx, "YData", bry, "Color", [0.05 0 0], "LineWidth", 5, ...
+                       "MarkerSize", 13, "MarkerFaceColor", [1 0 0], "Color", [0 0 0], ...
                        "Visible", "off", "Parent", axes_handle);
     boss_glow   = line("XData", 0, "YData", 0, "LineStyle", "none", "Marker", "o", ...
                        "MarkerSize", 11, "MarkerFaceColor", [1 1 0.5], "Color", [1 0.8 0.2], ...
                        "Visible", "off", "Parent", axes_handle);
+    boss_teeth  = line("XData", tx, "YData", ty, "Color", [1 1 1], "LineWidth", 3.5, ...
+                       "Visible", "off", "Parent", axes_handle);
+    boss_brow   = line("XData", brx, "YData", bry, "Color", [0 0 0], "LineWidth", 5, ...
+                       "Visible", "off", "Parent", axes_handle);
     boss_warning = text(0, 0, "!", "HorizontalAlignment", "center", "FontUnits", "normalized", ...
                         "FontSize", 0.12, "FontWeight", "bold", "Color", [1 0.1 0.1], ...
                         "Visible", "off", "Parent", axes_handle);
-    boss_parts = [boss_dark, boss_aura, boss_spike_patch, boss_fins, boss_body, boss_stripe, ...
-                  boss_scar, boss_teeth, boss_eye, boss_brow];
 
     burst_handle = line("XData", zeros(1, 8), "YData", zeros(1, 8), "LineStyle", "none", ...
                         "Marker", ".", "MarkerSize", 14, "Color", [1 0.95 0.4], ...
@@ -590,7 +554,7 @@ function [outcome, final_score] = play_round(figure_handle, axes_handle, level, 
                 outcome = "quit";
         endswitch
 
-        player_speed = base_speed / (1 + 0.05 * player_size);
+        player_speed = base_speed / (1 + 0.04 * player_size);
         player_x = player_x + velocity(1) * player_speed;
         player_y = player_y + velocity(2) * player_speed;
         player_x = min(max(player_x, 0), world_width);
@@ -603,23 +567,25 @@ function [outcome, final_score] = play_round(figure_handle, axes_handle, level, 
         endif
 
         if boss_active
-            current_small_probability = max(small_probability, 0.60);
+            current_small_probability = max(small_probability, 0.55);
         else
             current_small_probability = small_probability;
         endif
         for i = 1:enemy_count
-            enemy_x(i) = enemy_x(i) + enemy_dir(i) * enemy_speed(i);
-            enemy_y(i) = enemy_y(i) + 0.12 * sin(0.1 * frame_count + i);
-            distance_to_player_i = hypot(player_x - enemy_x(i), player_y - enemy_y(i));
-            if enemy_size(i) > player_size * size_tolerance && distance_to_player_i < 45
-                enemy_y(i) = enemy_y(i) + hunt_strength * sign(player_y - enemy_y(i));
-                if distance_to_player_i < 30 && sign(player_x - enemy_x(i)) ~= enemy_dir(i) && rand < 0.02
-                    enemy_dir(i) = -enemy_dir(i);
+            enemy_is_big = enemy_size(i) > player_size * size_tolerance;
+            enemy_distance = hypot(player_x - enemy_x(i), player_y - enemy_y(i));
+            if enemy_is_big && enemy_distance < hunt_radius && invulnerable_frames == 0
+                if abs(player_x - enemy_x(i)) > 1
+                    enemy_dir(i) = sign(player_x - enemy_x(i));
                 endif
-            elseif player_size > enemy_size(i) * size_tolerance && distance_to_player_i < 22
-                enemy_y(i) = enemy_y(i) - flee_strength * sign(player_y - enemy_y(i));
+                chase_speed = min(enemy_speed(i) * hunt_boost, 1.7);
+                enemy_x(i) = enemy_x(i) + enemy_dir(i) * chase_speed;
+                y_step = min(max(player_y - enemy_y(i), -0.6 * chase_speed), 0.6 * chase_speed);
+                enemy_y(i) = min(max(enemy_y(i) + y_step, 7), world_height - 10);
+            else
+                enemy_x(i) = enemy_x(i) + enemy_dir(i) * enemy_speed(i);
+                enemy_y(i) = enemy_y(i) + 0.12 * sin(0.1 * frame_count + i);
             endif
-            enemy_y(i) = min(max(enemy_y(i), 7), world_height - 10);
             left_screen = (enemy_dir(i) == 1  && enemy_x(i) > world_width + 5 * enemy_size(i)) || ...
                           (enemy_dir(i) == -1 && enemy_x(i) < -5 * enemy_size(i));
             if left_screen
@@ -660,50 +626,53 @@ function [outcome, final_score] = play_round(figure_handle, axes_handle, level, 
             boss_y = world_height / 2 - 3;
             boss_mode = "chase";
             boss_timer = dash_wait;
-            banner_frames = 100;
-            set(banner_text, "String", sprintf("DANGER! BOSS: %s!", boss_names{level}), "Color", [1 0.3 0.3]);
-            shake_frames = 25;
-            set(boss_parts, "Visible", "on");
-            boss_velocity = [0 0];
+            banner_frames = 140;
+            set(banner_text, "String", sprintf("!! %s !!", upper(boss_names{level})), "Color", [1 0.15 0.15]);
+            shake_frames = 45;
+            hit_flash_frames = 10;
+            set(boss_dark, "Visible", "on");
+            set([boss_fins, boss_body, boss_stripe, boss_eye], "Visible", "on");
             if boss_species == 6
                 set(boss_glow, "Visible", "on");
             endif
         endif
         boss_edible = boss_active && (player_size > boss_win_size);
-        if boss_active && ~boss_edible
-            boss_was_edible = false;
-        endif
         if boss_edible && ~boss_was_edible
             boss_was_edible = true;
             banner_frames = 100;
             set(banner_text, "String", "NOW EAT THE BOSS!", "Color", [0.4 1 0.5]);
             set([boss_aim, boss_warning], "Visible", "off");
+            set(boss_dark, "Visible", "off");
+        endif
+        if boss_active && ~boss_defeated && ~boss_edible && boss_was_edible
+            boss_was_edible = false;
+            banner_frames = 100;
+            set(banner_text, "String", "THE BOSS IS BACK!", "Color", [1 0.2 0.2]);
+            set(boss_dark, "Visible", "on");
         endif
         if boss_active
             to_player = [player_x - boss_x, player_y - boss_y];
             distance_to_player = max(norm(to_player), 0.001);
+            boss_step = [0 0];
             if boss_edible
                 boss_mode = "flee";
                 away_vector = -to_player / distance_to_player;
                 center_pull = [world_width / 2 - boss_x, world_height / 2 - boss_y];
                 center_pull = center_pull / max(norm(center_pull), 1);
                 flee_vector = away_vector + 0.35 * center_pull;
-                desired_velocity = 0.9 * boss_speed * flee_vector / max(norm(flee_vector), 0.001);
-                boss_velocity = 0.8 * boss_velocity + 0.2 * desired_velocity;
+                boss_step = 0.9 * boss_speed * flee_vector / max(norm(flee_vector), 0.001);
             else
                 switch boss_mode
                     case "chase"
-                        desired_velocity = boss_speed * to_player / distance_to_player;
-                        boss_velocity = 0.93 * boss_velocity + 0.07 * desired_velocity;
+                        boss_step = boss_speed * to_player / distance_to_player;
                         boss_timer = boss_timer - 1;
                         if boss_timer <= 0
                             boss_mode = "telegraph";
                             boss_timer = telegraph_frames;
                             dash_vector = to_player / distance_to_player;
-                            boss_combo_left = combo_count;
+                            boss_combo = boss_combo_max;
                         endif
                     case "telegraph"
-                        boss_velocity = 0.8 * boss_velocity;
                         boss_timer = boss_timer - 1;
                         if boss_timer <= 0
                             boss_mode = "dash";
@@ -711,13 +680,13 @@ function [outcome, final_score] = play_round(figure_handle, axes_handle, level, 
                             shake_frames = 6;
                         endif
                     case "dash"
-                        boss_velocity = 2.8 * boss_speed * dash_vector;
+                        boss_step = 2.8 * boss_speed * dash_vector;
                         boss_timer = boss_timer - 1;
                         if boss_timer <= 0
-                            boss_combo_left = boss_combo_left - 1;
-                            if boss_combo_left > 0
+                            if boss_combo > 0
+                                boss_combo = boss_combo - 1;
                                 boss_mode = "telegraph";
-                                boss_timer = 12;
+                                boss_timer = max(8, round(telegraph_frames / 2));
                                 dash_vector = to_player / distance_to_player;
                             else
                                 boss_mode = "chase";
@@ -726,10 +695,8 @@ function [outcome, final_score] = play_round(figure_handle, axes_handle, level, 
                         endif
                     otherwise
                         boss_mode = "chase";
-                        boss_timer = dash_wait;
                 endswitch
             endif
-            boss_step = boss_velocity;
             boss_x = min(max(boss_x + boss_step(1), 0), world_width);
             boss_y = min(max(boss_y + boss_step(2), 7), world_height - 10);
             if abs(boss_step(1)) > 0.01
@@ -797,89 +764,102 @@ function [outcome, final_score] = play_round(figure_handle, axes_handle, level, 
         set([player_body, player_fins, player_stripe, player_eye], "Visible", visible_state);
 
         for i = 1:enemy_count
-            if player_size > enemy_size(i) * size_tolerance
+            [bx, by, fx, fy, sx, sy, ex, ey] = fish_shape(enemy_x(i), enemy_y(i), enemy_size(i), ...
+                enemy_dir(i), 0.25 * sin(0.5 * frame_count + i), enemy_species(i));
+            is_edible    = player_size > enemy_size(i) * size_tolerance;
+            is_dangerous = enemy_size(i) > player_size * size_tolerance;
+            if is_edible
                 fish_color = [0.30 0.80 0.40];
-                fierceness = 0.7;
-            elseif enemy_size(i) > player_size * size_tolerance
-                fish_color = [0.90 0.25 0.20];
-                fierceness = 1.4;
+            elseif is_dangerous
+                fish_color = [0.75 0.05 0.08];
             else
                 fish_color = [0.95 0.90 0.30];
-                fierceness = 1.0;
             endif
-            [bx, by, fx, fy, sx, sy, ex, ey, tx, ty, brx, bry] = fish_shape(enemy_x(i), enemy_y(i), ...
-                enemy_size(i), enemy_dir(i), 0.25 * sin(0.5 * frame_count + i), enemy_species(i), fierceness);
-            set(enemy_body(i), "XData", bx, "YData", by, "FaceColor", fish_color);
+            if is_dangerous
+                body_edge = [1 0.25 0.2];
+                body_edge_width = 1.8;
+            else
+                body_edge = [0.15 0.15 0.15];
+                body_edge_width = 0.5;
+            endif
+            set(enemy_body(i), "XData", bx, "YData", by, "FaceColor", fish_color, ...
+                "EdgeColor", body_edge, "LineWidth", body_edge_width);
             set(enemy_fins(i), "XData", fx, "YData", fy, "FaceColor", 0.7 * fish_color);
             set(enemy_stripe(i), "XData", sx, "YData", sy, "FaceColor", 0.75 * fish_color);
-            set(enemy_teeth(i), "XData", tx, "YData", ty);
-            set(enemy_eye(i), "XData", ex, "YData", ey);
-            set(enemy_brow(i), "XData", brx, "YData", bry);
+            if is_dangerous
+                [tx, ty, brx, bry] = fish_menace(enemy_x(i), enemy_y(i), enemy_size(i), ...
+                                                 enemy_dir(i), enemy_species(i));
+                set(enemy_teeth(i), "XData", tx, "YData", ty, "Visible", "on");
+                set(enemy_brow(i), "XData", brx, "YData", bry, "Visible", "on");
+                set(enemy_eye(i), "XData", ex, "YData", ey, "MarkerFaceColor", [1 0.1 0.1], ...
+                    "MarkerSize", 6);
+            else
+                set([enemy_teeth(i), enemy_brow(i)], "Visible", "off");
+                set(enemy_eye(i), "XData", ex, "YData", ey, "MarkerFaceColor", [1 1 1], ...
+                    "MarkerSize", 4);
+            endif
         endfor
 
         if boss_active && ~boss_defeated
             if strcmp(boss_mode, "dash")
                 boss_wiggle = 0.35 * sin(1.2 * frame_count);
-                boss_fierce = 3.2;
-            elseif strcmp(boss_mode, "telegraph")
-                boss_wiggle = 0.20 * sin(0.4 * frame_count);
-                boss_fierce = 2.6;
             else
                 boss_wiggle = 0.20 * sin(0.4 * frame_count);
-                boss_fierce = 2.0;
             endif
-            if boss_edible
-                boss_fierce = 0.7;
+            draw_x = boss_x;
+            draw_y = boss_y;
+            if strcmp(boss_mode, "telegraph")
+                boss_jitter = 0.6 * (2 * rand(1, 2) - 1);
+                draw_x = draw_x + boss_jitter(1);
+                draw_y = draw_y + boss_jitter(2);
             endif
-            [bx, by, fx, fy, sx, sy, ex, ey, tx, ty, brx, bry] = fish_shape(boss_x, boss_y, boss_size, ...
-                boss_dir, boss_wiggle, boss_species, boss_fierce);
-            [spx, spy] = boss_spikes(boss_x, boss_y, boss_size, boss_dir, boss_species);
+            [bx, by, fx, fy, sx, sy, ex, ey] = fish_shape(draw_x, draw_y, boss_size, boss_dir, ...
+                                                          boss_wiggle, boss_species);
             boss_edge = [0.1 0 0];
-            boss_eye_color = [1 0.1 0.05];
             if boss_edible
                 boss_color = [0.35 0.90 0.45];
                 boss_edge = [1 0.85 0.2];
-                boss_eye_color = [1 1 1];
             elseif strcmp(boss_mode, "telegraph") && mod(frame_count, 4) < 2
                 boss_color = [1 0.55 0.1];
             elseif strcmp(boss_mode, "dash")
                 boss_color = [0.95 0.10 0.10];
-                boss_eye_color = [1 1 0.2];
             else
-                boss_color = [0.45 0.05 0.12];
+                boss_color = [0.38 0.03 0.08];
             endif
             set(boss_body, "XData", bx, "YData", by, "FaceColor", boss_color, "EdgeColor", boss_edge);
             set(boss_fins, "XData", fx, "YData", fy, "FaceColor", 0.7 * boss_color);
             set(boss_stripe, "XData", sx, "YData", sy, "FaceColor", 0.75 * boss_color);
-            set(boss_spike_patch, "XData", spx, "YData", spy);
-            set(boss_teeth, "XData", tx, "YData", ty);
-            set(boss_eye, "XData", ex, "YData", ey, "MarkerFaceColor", boss_eye_color);
-            set(boss_brow, "XData", brx, "YData", bry);
-            set(boss_scar, "XData", boss_x + boss_dir * boss_size * boss_len * [-0.55 -0.20], ...
-                "YData", boss_y + boss_size * boss_hgt * [0.50 -0.40]);
+            set(boss_eye, "XData", ex, "YData", ey);
             if boss_edible
-                set([boss_aura, boss_dark, boss_brow], "Visible", "off");
+                set([boss_teeth, boss_brow, boss_aura], "Visible", "off");
+                set(boss_eye, "MarkerFaceColor", [1 1 1], "MarkerSize", 9);
             else
-                pulse = sin(0.25 * frame_count);
-                set(boss_aura, "XData", boss_x + 1.35 * (bx - boss_x), ...
-                    "YData", boss_y + 1.45 * (by - boss_y), "FaceAlpha", 0.25 + 0.12 * pulse, ...
-                    "Visible", "on");
-                set(boss_dark, "FaceAlpha", 0.16 + 0.06 * pulse, "Visible", "on");
-                set(boss_brow, "Visible", "on");
+                aura_alpha = 0.16 + 0.10 * sin(0.3 * frame_count);
+                if strcmp(boss_mode, "dash")
+                    aura_alpha = 0.45;
+                endif
+                set(boss_aura, "XData", draw_x + 1.3 * (bx - draw_x), ...
+                    "YData", draw_y + 1.3 * (by - draw_y), "FaceAlpha", aura_alpha, "Visible", "on");
+                [tx, ty, brx, bry] = fish_menace(draw_x, draw_y, boss_size, boss_dir, boss_species);
+                set(boss_teeth, "XData", tx, "YData", ty, "Visible", "on");
+                set(boss_brow, "XData", brx, "YData", bry, "Visible", "on");
+                set(boss_eye, "MarkerFaceColor", [1 0 0], "MarkerSize", 13);
+                set(boss_dark, "FaceAlpha", 0.22 + 0.06 * sin(0.1 * frame_count));
             endif
             if boss_species == 6
                 set(boss_glow, "XData", boss_x + boss_dir * boss_size * 1.1 * 0.95, ...
                     "YData", boss_y + boss_size * 1.75);
             endif
             if strcmp(boss_mode, "telegraph")
-                set(boss_aim, "XData", [boss_x, boss_x + 45 * dash_vector(1)], ...
-                    "YData", [boss_y, boss_y + 45 * dash_vector(2)], "Visible", "on");
+                set(boss_aim, "XData", [boss_x, boss_x + 70 * dash_vector(1)], ...
+                    "YData", [boss_y, boss_y + 70 * dash_vector(2)], "LineWidth", 3, "Visible", "on");
                 set(boss_warning, "Position", [boss_x, boss_y + boss_size * 1.7], "Visible", "on");
             else
                 set([boss_aim, boss_warning], "Visible", "off");
             endif
         elseif boss_defeated
-            set([boss_parts, boss_glow, boss_aim, boss_warning], "Visible", "off");
+            set([boss_fins, boss_body, boss_stripe, boss_eye, boss_glow, boss_aim, boss_warning, ...
+                 boss_teeth, boss_brow, boss_aura, boss_dark], "Visible", "off");
         endif
 
         set(bubble_small, "XData", bubble_x(1:10), "YData", bubble_y(1:10));
@@ -965,10 +945,10 @@ hold(axes_handle, "on");
 draw_sea_background(axes_handle, 1);
 rules_text = {"Eat smaller fish to grow. A BOSS arrives when you are big.", ...
               "Grow even bigger than the boss, then EAT it to win the level!", ...
-              "Green = edible    Red = dangerous    Yellow = same size", ...
-              "Red dashed line = the boss is about to charge!", ...
-              "3 lives per level  -  5 levels  -  5 terrifying bosses", ...
-              "Big fish HUNT you, and every hit makes you shrink!", "", ...
+              "Green = edible    Red = DANGER (they hunt you!)    Yellow = same size", ...
+              "Red dashed line = the boss is about to charge (sometimes twice!)", ...
+              "Getting bitten costs a life AND makes you shrink!", ...
+              "3 lives (2 in levels 4-5)  -  5 levels  -  5 bosses", "", ...
               "Move: arrow keys or Z Q S D / W A S D (SPACE = stop)", ...
               "ESC = quit", "", "Press SPACE to start"};
 start_screen = show_screen(axes_handle, "ABYSS FEAST", rules_text, [0.05 0.25 0.45]);
