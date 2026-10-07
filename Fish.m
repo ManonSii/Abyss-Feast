@@ -108,20 +108,20 @@ function [x, y, fish_size, direction, speed, species] = spawn_enemy(player_size,
         speed_factor, small_probability, allowed_species, world_width, world_height, ...
         player_x, player_y, initial_placement)
     species = allowed_species(randi(numel(allowed_species)));
-    species_speed = [1.0 0.8 1.25 1.5 1.15 0.8];
+    species_speed = [1.0 0.7 1.2 1.5 1.0 0.6];
     if rand < small_probability
         fish_size = player_size * (0.45 + 0.45 * rand);
     else
-        fish_size = player_size * (1.2 + 1.0 * rand);
+        fish_size = player_size * (1.15 + 0.90 * rand);
     endif
     fish_size = min(max(fish_size, 0.8), 14);
     direction = 2 * (rand > 0.5) - 1;
-    speed     = speed_factor * species_speed(species) * (0.35 + 0.60 * rand);
-    speed     = min(speed, 1.6);
+    speed     = speed_factor * species_speed(species) * (0.25 + 0.50 * rand);
+    speed     = min(speed, 1.4);
     y         = 7 + (world_height - 18) * rand;
     if initial_placement
         x = world_width * rand;
-        while hypot(x - player_x, y - player_y) < 22
+        while hypot(x - player_x, y - player_y) < 28
             x = world_width * rand;
             y = 7 + (world_height - 18) * rand;
         endwhile
@@ -315,28 +315,28 @@ function [outcome, final_score] = play_round(figure_handle, axes_handle, level, 
     level_names       = {"Sunny Reef", "Kelp Forest", "Sunken Ship", "Magma Trench", "The Abyss"};
     boss_names        = {"Giant Puffer", "Barracuda", "Moray Boss", "Anglerfish King", "Megalodon"};
     boss_species_list = [2 4 3 6 5];
-    boss_size_list    = [8.5 9.5 10.5 11.5 12.5];
-    boss_trigger_list = [6.0 7.0 8.0 9.0 10.0];
-    boss_speed_list   = [0.60 0.70 0.78 0.85 0.90];
-    telegraph_list    = [28 24 20 16 13];
-    dash_wait_list    = [110 95 80 68 56];
-    small_prob_list   = [0.55 0.50 0.45 0.40 0.35];
-    species_lists     = {[1 2 4 1], [1 3 4 5], [3 4 5 5 6], [3 4 5 6 6], [3 4 5 5 6 6]};
-    combo_list        = [0 0 1 1 2];
-    lives_list        = [3 3 3 2 2];
-    hunt_radius_list  = [28 32 36 40 45];
-    hunt_boost_list   = [1.0 1.1 1.2 1.3 1.4];
+    boss_size_list    = [7.5 8.5 9.0 9.5 10.5];
+    boss_trigger_list = [5.5 6.0 6.5 7.0 7.5];
+    boss_speed_list   = [0.45 0.52 0.58 0.64 0.70];
+    telegraph_list    = [38 34 30 26 22];
+    dash_wait_list    = [160 140 120 105 90];
+    small_prob_list   = [0.70 0.65 0.60 0.55 0.50];
+    species_lists     = {[1 1 2], [1 2 4], [1 3 4 2], [1 3 4 6], [1 2 3 4 5]};
+    combo_list        = [0 0 0 0 1];
+    lives_list        = [4 4 4 4 3];
+    hunt_radius_list  = [18 20 22 24 26];
+    hunt_boost_list   = [0.70 0.75 0.80 0.85 0.90];
 
     world_width     = 100;
     world_height    = 60;
     start_size      = 2;
-    growth_ratio    = 0.15;
+    growth_ratio    = 0.25;
     initial_lives   = lives_list(level);
     base_speed      = 1.2;
     frame_pause     = 0.02;
     size_tolerance  = 1.05;
-    enemy_count     = round(9 + 1.5 * level);
-    speed_factor    = 1 + 0.20 * (level - 1);
+    enemy_count     = 7 + level;
+    speed_factor    = 1 + 0.15 * (level - 1);
     level_count     = numel(level_names);
 
     boss_species    = boss_species_list(level);
@@ -508,7 +508,7 @@ function [outcome, final_score] = play_round(figure_handle, axes_handle, level, 
         life_body(k) = patch("XData", bx, "YData", by, "FaceColor", [1 0.65 0.1], ...
                              "EdgeColor", [0.4 0.2 0], "Parent", axes_handle);
     endfor
-    hud_text = text(26, 57, "", "Parent", axes_handle, "FontUnits", "normalized", ...
+    hud_text = text(30, 57, "", "Parent", axes_handle, "FontUnits", "normalized", ...
                     "FontSize", 0.032, "FontWeight", "bold", "Color", [1 1 1], ...
                     "VerticalAlignment", "middle");
     text(68, 57, "Size", "Parent", axes_handle, "FontUnits", "normalized", ...
@@ -567,7 +567,7 @@ function [outcome, final_score] = play_round(figure_handle, axes_handle, level, 
         endif
 
         if boss_active
-            current_small_probability = max(small_probability, 0.55);
+            current_small_probability = max(small_probability, 0.75);
         else
             current_small_probability = small_probability;
         endif
@@ -676,11 +676,11 @@ function [outcome, final_score] = play_round(figure_handle, axes_handle, level, 
                         boss_timer = boss_timer - 1;
                         if boss_timer <= 0
                             boss_mode = "dash";
-                            boss_timer = 16;
+                            boss_timer = 14;
                             shake_frames = 6;
                         endif
                     case "dash"
-                        boss_step = 2.8 * boss_speed * dash_vector;
+                        boss_step = 2.4 * boss_speed * dash_vector;
                         boss_timer = boss_timer - 1;
                         if boss_timer <= 0
                             if boss_combo > 0
@@ -719,8 +719,8 @@ function [outcome, final_score] = play_round(figure_handle, axes_handle, level, 
 
         if player_hit && invulnerable_frames == 0
             lives = lives - 1;
-            invulnerable_frames = 35;
-            player_size = max(start_size, player_size * 0.88);
+            invulnerable_frames = 60;
+            player_size = max(start_size, player_size * 0.95);
             hit_flash_frames = 6;
             shake_frames = max(shake_frames, 8);
             player_x = world_width / 2;
@@ -947,8 +947,8 @@ rules_text = {"Eat smaller fish to grow. A BOSS arrives when you are big.", ...
               "Grow even bigger than the boss, then EAT it to win the level!", ...
               "Green = edible    Red = DANGER (they hunt you!)    Yellow = same size", ...
               "Red dashed line = the boss is about to charge (sometimes twice!)", ...
-              "Getting bitten costs a life AND makes you shrink!", ...
-              "3 lives (2 in levels 4-5)  -  5 levels  -  5 bosses", "", ...
+              "Getting bitten costs a life and makes you shrink a little", ...
+              "4 lives (3 in level 5)  -  5 levels  -  5 bosses", "", ...
               "Move: arrow keys or Z Q S D / W A S D (SPACE = stop)", ...
               "ESC = quit", "", "Press SPACE to start"};
 start_screen = show_screen(axes_handle, "ABYSS FEAST", rules_text, [0.05 0.25 0.45]);
