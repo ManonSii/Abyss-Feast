@@ -54,42 +54,14 @@ function click_handler(figure_handle, mouse_event)
     endfor
 endfunction
 
-function [wave, fs] = generate_music()
-    fs = 8000;
-    note_len = 0.35;
-    t = (0:round(note_len * fs) - 1) / fs;
-    note_env = sin(pi * t / note_len) .^ 2;
-    chords = [220.00 261.63 329.63 440.00;
-              174.61 220.00 261.63 349.23;
-              261.63 329.63 392.00 523.25;
-              196.00 246.94 293.66 392.00];
-    pattern = [1 2 3 4 3 2 3 4];
-    wave = [];
-    for c = 1:4
-        segment = [];
-        for repeat = 1:2
-            for k = pattern
-                f = chords(c, k);
-                segment = [segment, (0.20 * sin(2*pi*f*t) + 0.07 * sin(2*pi*2*f*t)) .* note_env];
-            endfor
-        endfor
-        tb = (0:numel(segment) - 1) / fs;
-        bass = 0.15 * sin(2*pi*(chords(c, 1) / 2) * tb) .* sin(pi * tb / tb(end)) .^ 2;
-        wave = [wave, segment + bass];
-    endfor
-    wave = 0.35 * wave / max(abs(wave));
-endfunction
-
 function player = make_music_player(music_file)
     player = [];
     try
         if exist(music_file, "file") == 2
             [wave, fs] = audioread(music_file);
             wave = mean(wave, 2);
-        else
-            [wave, fs] = generate_music();
+            player = audioplayer(wave, fs);
         endif
-        player = audioplayer(wave, fs);
     catch
         player = [];
     end_try_catch
@@ -99,20 +71,33 @@ function update_music(figure_handle)
     if ~ishandle(figure_handle)
         return;
     endif
-    player = getappdata(figure_handle, "music_player");
-    if isempty(player) || ~isequal(getappdata(figure_handle, "sound_ok"), 1)
+    if ~isequal(getappdata(figure_handle, "sound_ok"), 1)
         return;
     endif
+    normal_player = getappdata(figure_handle, "music_normal");
+    boss_player   = getappdata(figure_handle, "music_boss");
+    if strcmp(getappdata(figure_handle, "music_mode"), "boss") && ~isempty(boss_player)
+        wanted = boss_player;
+        other  = normal_player;
+    else
+        wanted = normal_player;
+        other  = boss_player;
+    endif
     try
-        if isequal(getappdata(figure_handle, "sound_on"), 1)
-            if ~isplaying(player)
-                play(player);
+        if ~isempty(other) && isplaying(other)
+            stop(other);
+        endif
+        if ~isempty(wanted)
+            if isequal(getappdata(figure_handle, "sound_on"), 1)
+                if ~isplaying(wanted)
+                    play(wanted);
+                endif
+            elseif isplaying(wanted)
+                stop(wanted);
             endif
-        elseif isplaying(player)
-            stop(player);
         endif
     catch
-        setappdata(figure_handle, "music_player", []);
+        setappdata(figure_handle, "sound_ok", 0);
     end_try_catch
 endfunction
 
@@ -899,6 +884,7 @@ function [outcome, final_score] = play_round(figure_handle, axes_handle, level, 
                       "Parent", axes_handle);
 
     setappdata(figure_handle, "last_key", "");
+    setappdata(figure_handle, "music_mode", "normal");
 
     while strcmp(outcome, "playing")
         if ~ishandle(figure_handle)
@@ -1023,6 +1009,7 @@ function [outcome, final_score] = play_round(figure_handle, axes_handle, level, 
             hit_flash_frames = 10;
             set(boss_dark, "Visible", "on");
             play_sfx(figure_handle, "boss");
+            setappdata(figure_handle, "music_mode", "boss");
             set([boss_fins, boss_body, boss_stripe, boss_eye], "Visible", "on");
             if boss_species == 6
                 set(boss_glow, "Visible", "on");
@@ -1326,6 +1313,7 @@ function [outcome, final_score] = play_round(figure_handle, axes_handle, level, 
         endif
     endwhile
     set(axes_handle, "XLim", [0 world_width], "YLim", [0 world_height]);
+    setappdata(figure_handle, "music_mode", "normal");
     final_score = score;
 endfunction
 
@@ -1350,17 +1338,18 @@ setappdata(figure_handle, "main_axes", axes_handle);
 setappdata(figure_handle, "sound_on", 1);
 setappdata(figure_handle, "sound_ok", 1);
 
-music_name = "abyss_music.wav";
-music_file = music_name;
+script_folder = "";
 try
     script_folder = fileparts(mfilename("fullpath"));
-    if ~isempty(script_folder) && exist(fullfile(script_folder, music_name), "file") == 2
-        music_file = fullfile(script_folder, music_name);
-    endif
 catch
 end_try_catch
-music_player = make_music_player(music_file);
-setappdata(figure_handle, "music_player", music_player);
+normal_file = fullfile(script_folder, "abyss_music.wav");
+boss_file   = fullfile(script_folder, "abyss_boss.wav");
+music_normal = make_music_player(normal_file);
+music_boss   = make_music_player(boss_file);
+setappdata(figure_handle, "music_normal", music_normal);
+setappdata(figure_handle, "music_boss", music_boss);
+setappdata(figure_handle, "music_mode", "normal");
 update_music(figure_handle);
 
 draw_sea_background(axes_handle, 1);
@@ -1437,6 +1426,7 @@ if ishandle(figure_handle)
     close(figure_handle);
 endif
 try
-    stop(music_player);
+    stop(music_normal);
+    stop(music_boss);
 catch
 end_try_catch
