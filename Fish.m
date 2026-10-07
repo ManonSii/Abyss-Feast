@@ -311,18 +311,278 @@ function screen_handles = show_screen(axes_handle, title_text, text_lines, panel
     screen_handles = [shadow, panel, title_shadow, title_main, message];
 endfunction
 
+function ratio = x_scale_ratio(axes_handle)
+    ratio = 1;
+    try
+        figure_of_axes = ancestor(axes_handle, "figure");
+        position = get(figure_of_axes, "Position");
+        ratio = (position(4) / 60) / (position(3) / 100);
+    catch
+        ratio = 1;
+    end_try_catch
+endfunction
+
+function [gear_x, gear_y] = gear_shape(center_x, center_y, radius, x_ratio)
+    tooth_count = 8;
+    inner_radius = 0.72 * radius;
+    step = 2 * pi / tooth_count;
+    gear_x = [];
+    gear_y = [];
+    for k = 0:tooth_count - 1
+        tooth_angle = k * step;
+        angles = tooth_angle + step * [-0.30 -0.18 0.18 0.30];
+        radii = [inner_radius radius radius inner_radius];
+        gear_x = [gear_x, center_x + x_ratio * radii .* cos(angles)];
+        gear_y = [gear_y, center_y + radii .* sin(angles)];
+    endfor
+endfunction
+
+function gear_handles = draw_gear(axes_handle, center_x, center_y, radius, gear_color, hole_color)
+    x_ratio = x_scale_ratio(axes_handle);
+    [gear_x, gear_y] = gear_shape(center_x, center_y, radius, x_ratio);
+    angle_vector = linspace(0, 2*pi, 24);
+    gear_body = patch("XData", gear_x, "YData", gear_y, "FaceColor", gear_color, ...
+                      "EdgeColor", [0.1 0.1 0.1], "LineWidth", 1, "Parent", axes_handle);
+    gear_hole = patch("XData", center_x + 0.38 * radius * x_ratio * cos(angle_vector), ...
+                      "YData", center_y + 0.38 * radius * sin(angle_vector), ...
+                      "FaceColor", hole_color, "EdgeColor", [0.1 0.1 0.1], "Parent", axes_handle);
+    gear_handles = [gear_body, gear_hole];
+endfunction
+
+function fish_handles = draw_static_fish(axes_handle, x, y, fish_size, direction, species, body_color, scary)
+    [bx, by, fx, fy, sx, sy, ex, ey] = fish_shape(x, y, fish_size, direction, 0.15, species);
+    fins   = patch("XData", fx, "YData", fy, "FaceColor", 0.7 * body_color, ...
+                   "EdgeColor", 0.3 * body_color, "HitTest", "off", "Parent", axes_handle);
+    body   = patch("XData", bx, "YData", by, "FaceColor", body_color, ...
+                   "EdgeColor", 0.3 * body_color, "LineWidth", 1.5, "HitTest", "off", ...
+                   "Parent", axes_handle);
+    stripe = patch("XData", sx, "YData", sy, "FaceColor", 0.75 * body_color, ...
+                   "EdgeColor", "none", "HitTest", "off", "Parent", axes_handle);
+    if scary
+        eye_color = [1 0.1 0.1];
+    else
+        eye_color = [1 1 1];
+    endif
+    eye = line("XData", ex, "YData", ey, "LineStyle", "none", "Marker", "o", "MarkerSize", 7, ...
+               "MarkerFaceColor", eye_color, "Color", [0 0 0], "HitTest", "off", "Parent", axes_handle);
+    fish_handles = [fins, body, stripe, eye];
+    if scary
+        [teeth_x, teeth_y, brow_x, brow_y] = fish_menace(x, y, fish_size, direction, species);
+        teeth = line("XData", teeth_x, "YData", teeth_y, "Color", [1 1 1], "LineWidth", 2, ...
+                     "HitTest", "off", "Parent", axes_handle);
+        brow  = line("XData", brow_x, "YData", brow_y, "Color", [0.1 0 0], "LineWidth", 3, ...
+                     "HitTest", "off", "Parent", axes_handle);
+        fish_handles = [fish_handles, teeth, brow];
+    endif
+endfunction
+
+function play_sfx(figure_handle, kind)
+    if ~isequal(getappdata(figure_handle, "sound_on"), 1) || ...
+       ~isequal(getappdata(figure_handle, "sound_ok"), 1)
+        return;
+    endif
+    fs = 8000;
+    switch kind
+        case "eat"
+            t = (0:round(0.10 * fs)) / fs;
+            wave = 0.35 * sin(2*pi*(500*t + 3500*t.^2)) .* (1 - t / 0.10);
+        case "hit"
+            t = (0:round(0.30 * fs)) / fs;
+            wave = 0.40 * sign(sin(2*pi*(180*t - 250*t.^2))) .* (1 - t / 0.30);
+        case "boss"
+            t = (0:round(0.70 * fs)) / fs;
+            wave = 0.50 * sin(2*pi*(60*t + 20*t.^2)) .* (0.6 + 0.4*sin(2*pi*16*t)) ...
+                   .* (1 - 0.4 * t / 0.70);
+        case "win"
+            notes = [523 659 784 1047];
+            wave = [];
+            t = (0:round(0.12 * fs)) / fs;
+            for k = 1:numel(notes)
+                wave = [wave, 0.35 * sin(2*pi*notes(k)*t) .* (1 - 0.6 * t / 0.12)];
+            endfor
+        case "lose"
+            notes = [392 330 262 196];
+            wave = [];
+            t = (0:round(0.15 * fs)) / fs;
+            for k = 1:numel(notes)
+                wave = [wave, 0.35 * sin(2*pi*notes(k)*t) .* (1 - 0.6 * t / 0.15)];
+            endfor
+        case "click"
+            t = (0:round(0.04 * fs)) / fs;
+            wave = 0.30 * sin(2*pi*900*t) .* (1 - t / 0.04);
+        otherwise
+            return;
+    endswitch
+    try
+        sound(wave, fs);
+    catch
+        setappdata(figure_handle, "sound_ok", 0);
+    end_try_catch
+endfunction
+
+function button_handles = make_button(figure_handle, axes_handle, center_x, center_y, ...
+        button_width, button_height, label, base_color, click_key, font_size)
+    left   = center_x - button_width / 2;
+    right  = center_x + button_width / 2;
+    bottom = center_y - button_height / 2;
+    top    = center_y + button_height / 2;
+    shadow = patch("XData", [left right right left] + 0.6, "YData", [bottom bottom top top] - 0.9, ...
+                   "FaceColor", [0 0 0], "FaceAlpha", 0.45, "EdgeColor", "none", ...
+                   "HitTest", "off", "Parent", axes_handle);
+    body   = patch("XData", [left right right left], "YData", [bottom bottom top top], ...
+                   "FaceColor", base_color, "EdgeColor", [1 1 1], "LineWidth", 2.5, ...
+                   "ButtonDownFcn", @(src, evt) setappdata(figure_handle, "last_key", click_key), ...
+                   "Parent", axes_handle);
+    shine  = patch("XData", [left + 0.6, right - 0.6, right - 0.6, left + 0.6], ...
+                   "YData", [center_y + 0.2, center_y + 0.2, top - 0.5, top - 0.5], ...
+                   "FaceColor", [1 1 1], "FaceAlpha", 0.18, "EdgeColor", "none", ...
+                   "HitTest", "off", "Parent", axes_handle);
+    label_handle = text(center_x, center_y, label, "HorizontalAlignment", "center", ...
+                        "VerticalAlignment", "middle", "FontUnits", "normalized", ...
+                        "FontSize", font_size, "FontWeight", "bold", "Color", [1 1 1], ...
+                        "HitTest", "off", "Parent", axes_handle);
+    button_handles = [shadow, body, shine, label_handle];
+endfunction
+
+function menu_handles = draw_title_menu(figure_handle, axes_handle)
+    menu_handles = [];
+    x_ratio = x_scale_ratio(axes_handle);
+
+    menu_handles(end + 1) = patch("XData", [0 100 100 0], "YData", [38.5 38.5 60 60], ...
+                                  "FaceColor", [0 0.05 0.15], "FaceAlpha", 0.35, "EdgeColor", "none", ...
+                                  "HitTest", "off", "Parent", axes_handle);
+    menu_handles(end + 1) = line("XData", 100 * rand(1, 14), "YData", 4 + 52 * rand(1, 14), ...
+                                 "LineStyle", "none", "Marker", "o", "MarkerSize", 5, ...
+                                 "Color", [1 1 1], "HitTest", "off", "Parent", axes_handle);
+    shark_handles = draw_static_fish(axes_handle, 15, 22.5, 4.2, 1, 5, [0.75 0.05 0.08], true);
+    fish_handles  = draw_static_fish(axes_handle, 85, 22.5, 3.0, 1, 1, [1 0.65 0.1], false);
+    menu_handles = [menu_handles, shark_handles, fish_handles];
+
+    title_lines  = {"A B Y S S", "F E A S T"};
+    title_y      = [53.8, 45.4];
+    title_colors = {[0.75 0.95 1.0], [1.0 0.75 0.15]};
+    for k = 1:2
+        menu_handles(end + 1) = text(50.9, title_y(k) - 1.0, title_lines{k}, ...
+            "HorizontalAlignment", "center", "VerticalAlignment", "middle", ...
+            "FontUnits", "normalized", "FontSize", 0.17, "FontWeight", "bold", ...
+            "Color", [0 0.03 0.1], "HitTest", "off", "Parent", axes_handle);
+        for a = 0:7
+            menu_handles(end + 1) = text(50 + 0.55 * cos(a * pi / 4), title_y(k) + 0.45 * sin(a * pi / 4), ...
+                title_lines{k}, "HorizontalAlignment", "center", "VerticalAlignment", "middle", ...
+                "FontUnits", "normalized", "FontSize", 0.17, "FontWeight", "bold", ...
+                "Color", [0.02 0.12 0.25], "HitTest", "off", "Parent", axes_handle);
+        endfor
+        menu_handles(end + 1) = text(50, title_y(k), title_lines{k}, ...
+            "HorizontalAlignment", "center", "VerticalAlignment", "middle", ...
+            "FontUnits", "normalized", "FontSize", 0.17, "FontWeight", "bold", ...
+            "Color", title_colors{k}, "HitTest", "off", "Parent", axes_handle);
+    endfor
+    menu_handles(end + 1) = text(50, 36.8, "EAT  OR  BE  EATEN", "HorizontalAlignment", "center", ...
+        "VerticalAlignment", "middle", "FontUnits", "normalized", "FontSize", 0.036, ...
+        "FontWeight", "bold", "Color", [0.8 0.95 1], "HitTest", "off", "Parent", axes_handle);
+
+    play_button = make_button(figure_handle, axes_handle, 50, 28.5, 40, 8.5, "PLAY", ...
+                              [0.12 0.60 0.30], "click_play", 0.07);
+    triangle = patch("XData", 37 + x_ratio * [-1.6 -1.6 1.8], "YData", 28.5 + [-2.2 2.2 0], ...
+                     "FaceColor", [1 1 1], "EdgeColor", "none", "HitTest", "off", "Parent", axes_handle);
+    settings_button = make_button(figure_handle, axes_handle, 50, 17.5, 40, 8.5, "SETTINGS", ...
+                                  [0.15 0.40 0.70], "click_settings", 0.055);
+    gear_handles = draw_gear(axes_handle, 36.5, 17.5, 2.6, [1 1 1], [0.15 0.40 0.70]);
+    set(gear_handles, "HitTest", "off");
+    menu_handles = [menu_handles, play_button, triangle, settings_button, gear_handles];
+
+    menu_handles(end + 1) = patch("XData", [0 100 100 0], "YData", [4 4 10 10], "FaceColor", [0 0.05 0.15], ...
+                                  "FaceAlpha", 0.35, "EdgeColor", "none", "HitTest", "off", ...
+                                  "Parent", axes_handle);
+    menu_handles(end + 1) = text(50, 7, "ENTER / SPACE = play     S = settings     M = sound on/off     ESC = quit", ...
+        "HorizontalAlignment", "center", "VerticalAlignment", "middle", "FontUnits", "normalized", ...
+        "FontSize", 0.028, "Color", [0.85 0.95 1], "HitTest", "off", "Parent", axes_handle);
+endfunction
+
+function show_settings(figure_handle, axes_handle)
+    items = [];
+    items(end + 1) = patch("XData", [0 100 100 0], "YData", [0 0 60 60], "FaceColor", [0 0 0], ...
+                           "FaceAlpha", 0.65, "EdgeColor", "none", "Parent", axes_handle);
+    items(end + 1) = patch("XData", [6 94 94 6], "YData", [3 3 57 57], "FaceColor", [0.04 0.18 0.32], ...
+                           "EdgeColor", [1 1 1], "LineWidth", 2.5, "Parent", axes_handle);
+    items(end + 1) = text(52.4, 50.8, "SETTINGS", "HorizontalAlignment", "center", ...
+                          "VerticalAlignment", "middle", "FontUnits", "normalized", "FontSize", 0.075, ...
+                          "FontWeight", "bold", "Color", [0 0 0], "Parent", axes_handle);
+    items(end + 1) = text(52, 51.5, "SETTINGS", "HorizontalAlignment", "center", ...
+                          "VerticalAlignment", "middle", "FontUnits", "normalized", "FontSize", 0.075, ...
+                          "FontWeight", "bold", "Color", [1 0.85 0.2], "Parent", axes_handle);
+    items = [items, draw_gear(axes_handle, 31, 51.5, 2.8, [1 0.85 0.2], [0.04 0.18 0.32])];
+
+    rows = { 45.4, "THE GOAL", 1;
+             42.0, "Cross 5 levels. In each one, eat smaller fish to grow,", 0;
+             39.1, "then beat the BOSS: get bigger than it and EAT it!", 0;
+             34.4, "HOW TO PLAY", 1;
+             31.0, "Swim: arrow keys or Z Q S D / W A S D    -    SPACE: stop", 0;
+             28.1, "Green = edible    Yellow = same size    Red = DANGER", 0;
+             25.2, "Red fish hunt you and bite: you lose a life and shrink", 0;
+             22.3, "Red dashed line = the boss is about to charge!", 0;
+             19.4, "P = settings during the game    -    ESC = quit", 0 };
+    for r = 1:size(rows, 1)
+        if rows{r, 3}
+            text_color = [1 0.85 0.2];
+            text_size = 0.04;
+            text_weight = "bold";
+        else
+            text_color = [1 1 1];
+            text_size = 0.03;
+            text_weight = "normal";
+        endif
+        items(end + 1) = text(11, rows{r, 1}, rows{r, 2}, "HorizontalAlignment", "left", ...
+                              "VerticalAlignment", "middle", "FontUnits", "normalized", ...
+                              "FontSize", text_size, "FontWeight", text_weight, "Color", text_color, ...
+                              "Parent", axes_handle);
+    endfor
+
+    sound_button = make_button(figure_handle, axes_handle, 30, 10.5, 34, 7.5, "SOUND: ON", ...
+                               [0.12 0.60 0.30], "click_sound", 0.045);
+    back_button  = make_button(figure_handle, axes_handle, 70, 10.5, 34, 7.5, "BACK", ...
+                               [0.15 0.40 0.70], "click_back", 0.05);
+    items = [items, sound_button, back_button];
+
+    done = false;
+    while ~done && ishandle(figure_handle)
+        if isequal(getappdata(figure_handle, "sound_on"), 1)
+            set(sound_button(4), "String", "SOUND: ON");
+            set(sound_button(2), "FaceColor", [0.12 0.60 0.30]);
+        else
+            set(sound_button(4), "String", "SOUND: MUTED");
+            set(sound_button(2), "FaceColor", [0.55 0.20 0.20]);
+        endif
+        key = wait_for_key(figure_handle, {"click_sound", "m", "click_back", "escape", ...
+                                           "return", "space", "b", "p"});
+        if any(strcmp(key, {"click_sound", "m"}))
+            if isequal(getappdata(figure_handle, "sound_on"), 1)
+                setappdata(figure_handle, "sound_on", 0);
+            else
+                setappdata(figure_handle, "sound_on", 1);
+                play_sfx(figure_handle, "click");
+            endif
+        else
+            done = true;
+        endif
+    endwhile
+    if ishandle(figure_handle)
+        delete(items(ishandle(items)));
+    endif
+endfunction
+
 function [outcome, final_score] = play_round(figure_handle, axes_handle, level, best_score, start_score)
     level_names       = {"Sunny Reef", "Kelp Forest", "Sunken Ship", "Magma Trench", "The Abyss"};
     boss_names        = {"Giant Puffer", "Barracuda", "Moray Boss", "Anglerfish King", "Megalodon"};
     boss_species_list = [2 4 3 6 5];
-    boss_size_list    = [7.5 8.5 9.0 9.5 10.5];
+    boss_size_list    = [8.0 9.0 10.0 11.0 12.0];
     boss_trigger_list = [5.5 6.0 6.5 7.0 7.5];
-    boss_speed_list   = [0.45 0.52 0.58 0.64 0.70];
-    telegraph_list    = [38 34 30 26 22];
-    dash_wait_list    = [160 140 120 105 90];
+    boss_speed_list   = [0.55 0.64 0.72 0.80 0.86];
+    telegraph_list    = [30 27 24 21 18];
+    dash_wait_list    = [120 105 92 80 70];
     small_prob_list   = [0.70 0.65 0.60 0.55 0.50];
     species_lists     = {[1 1 2], [1 2 4], [1 3 4 2], [1 3 4 6], [1 2 3 4 5]};
-    combo_list        = [0 0 0 0 1];
+    combo_list        = [0 1 1 2 2];
     lives_list        = [4 4 4 4 3];
     hunt_radius_list  = [18 20 22 24 26];
     hunt_boost_list   = [0.70 0.75 0.80 0.85 0.90];
@@ -359,6 +619,7 @@ function [outcome, final_score] = play_round(figure_handle, axes_handle, level, 
     velocity     = [0 0];
     lives        = initial_lives;
     score        = start_score;
+    displayed_score = start_score;
     invulnerable_frames = 0;
     frame_count  = 0;
     outcome      = "playing";
@@ -497,30 +758,44 @@ function [outcome, final_score] = play_round(figure_handle, axes_handle, level, 
                        "FontSize", 0.06, "FontWeight", "bold", "Color", [1 0.9 0.3], ...
                        "Parent", axes_handle);
 
-    patch("XData", [0 100 100 0], "YData", [54 54 60 60], "FaceColor", [0 0.05 0.15], ...
-          "FaceAlpha", 0.6, "EdgeColor", "none", "Parent", axes_handle);
+    patch("XData", [0 38 38 0], "YData", [46.5 46.5 60 60], "FaceColor", [0 0.05 0.15], ...
+          "FaceAlpha", 0.55, "EdgeColor", "none", "Parent", axes_handle);
+    patch("XData", [40 100 100 40], "YData", [54 54 60 60], "FaceColor", [0 0.05 0.15], ...
+          "FaceAlpha", 0.55, "EdgeColor", "none", "Parent", axes_handle);
+    text(2, 57.6, sprintf("LEVEL %d/%d - %s", level, level_count, level_names{level}), ...
+         "Parent", axes_handle, "FontUnits", "normalized", "FontSize", 0.032, "FontWeight", "bold", ...
+         "Color", [1 0.9 0.3], "VerticalAlignment", "middle");
+    score_hud = text(2, 53.2, "", "Parent", axes_handle, "FontUnits", "normalized", ...
+                     "FontSize", 0.05, "FontWeight", "bold", "Color", [1 1 1], ...
+                     "VerticalAlignment", "middle");
     life_body = zeros(1, initial_lives);
     life_fins = zeros(1, initial_lives);
     for k = 1:initial_lives
-        [bx, by, fx, fy] = fish_shape(4 + 7 * (k - 1), 57, 1.2, 1, 0);
+        [bx, by, fx, fy] = fish_shape(4 + 7 * (k - 1), 49.2, 1.3, 1, 0);
         life_fins(k) = patch("XData", fx, "YData", fy, "FaceColor", [0.85 0.35 0.05], ...
                              "EdgeColor", "none", "Parent", axes_handle);
         life_body(k) = patch("XData", bx, "YData", by, "FaceColor", [1 0.65 0.1], ...
                              "EdgeColor", [0.4 0.2 0], "Parent", axes_handle);
     endfor
-    hud_text = text(30, 57, "", "Parent", axes_handle, "FontUnits", "normalized", ...
-                    "FontSize", 0.032, "FontWeight", "bold", "Color", [1 1 1], ...
+    best_hud = text(42, 57, "", "Parent", axes_handle, "FontUnits", "normalized", ...
+                    "FontSize", 0.03, "FontWeight", "bold", "Color", [1 0.9 0.5], ...
                     "VerticalAlignment", "middle");
-    text(68, 57, "Size", "Parent", axes_handle, "FontUnits", "normalized", ...
+    text(64.5, 57, "SIZE", "Parent", axes_handle, "FontUnits", "normalized", ...
          "FontSize", 0.03, "Color", [1 1 1], "HorizontalAlignment", "right", ...
          "VerticalAlignment", "middle");
-    patch("XData", [70 98 98 70], "YData", [55.2 55.2 58.8 58.8], "FaceColor", [0.2 0.3 0.4], ...
+    patch("XData", [66 88 88 66], "YData", [55.2 55.2 58.8 58.8], "FaceColor", [0.2 0.3 0.4], ...
           "EdgeColor", [1 1 1], "Parent", axes_handle);
-    progress_bar = patch("XData", [70 70 70 70], "YData", [55.2 55.2 58.8 58.8], ...
+    progress_bar = patch("XData", [66 66 66 66], "YData", [55.2 55.2 58.8 58.8], ...
                          "FaceColor", [1 0.8 0.1], "EdgeColor", "none", "Parent", axes_handle);
-    trigger_x = 70 + 28 * boss_trigger / boss_win_size;
+    trigger_x = 66 + 22 * boss_trigger / boss_win_size;
     line("XData", [trigger_x trigger_x], "YData", [54.8 59.2], "Color", [1 1 1], ...
          "LineWidth", 2, "Parent", axes_handle);
+    patch("XData", [91 98 98 91], "YData", [54.3 54.3 59.7 59.7], "FaceColor", [0.10 0.22 0.38], ...
+          "FaceAlpha", 0.9, "EdgeColor", [1 1 1], "LineWidth", 1.5, ...
+          "ButtonDownFcn", @(src, evt) setappdata(figure_handle, "last_key", "click_settings"), ...
+          "Parent", axes_handle);
+    gear_icon = draw_gear(axes_handle, 94.5, 57, 2.1, [0.9 0.92 0.95], [0.10 0.22 0.38]);
+    set(gear_icon, "HitTest", "off");
 
     hit_flash = patch("XData", [0 100 100 0], "YData", [0 0 60 60], "FaceColor", [1 0 0], ...
                       "FaceAlpha", 0.30, "EdgeColor", "none", "Visible", "off", ...
@@ -539,6 +814,7 @@ function [outcome, final_score] = play_round(figure_handle, axes_handle, level, 
 
         key = getappdata(figure_handle, "last_key");
         setappdata(figure_handle, "last_key", "");
+        open_settings = false;
         switch key
             case {"leftarrow", "q", "a"}
                 velocity = [-1 0];
@@ -550,9 +826,26 @@ function [outcome, final_score] = play_round(figure_handle, axes_handle, level, 
                 velocity = [0 -1];
             case "space"
                 velocity = [0 0];
+            case {"p", "click_settings"}
+                open_settings = true;
+            case "m"
+                if isequal(getappdata(figure_handle, "sound_on"), 1)
+                    setappdata(figure_handle, "sound_on", 0);
+                else
+                    setappdata(figure_handle, "sound_on", 1);
+                endif
             case "escape"
                 outcome = "quit";
         endswitch
+        if open_settings
+            show_settings(figure_handle, axes_handle);
+            if ~ishandle(figure_handle)
+                outcome = "quit";
+                final_score = score;
+                return;
+            endif
+            setappdata(figure_handle, "last_key", "");
+        endif
 
         player_speed = base_speed / (1 + 0.04 * player_size);
         player_x = player_x + velocity(1) * player_speed;
@@ -597,6 +890,7 @@ function [outcome, final_score] = play_round(figure_handle, axes_handle, level, 
                             enemy_size(i), enemy_species(i))
                 if player_size > enemy_size(i) * size_tolerance
                     points = round(10 * enemy_size(i));
+                    play_sfx(figure_handle, "eat");
                     score = score + points;
                     player_size = player_size + growth_ratio * enemy_size(i);
                     burst_x = enemy_x(i);
@@ -631,6 +925,7 @@ function [outcome, final_score] = play_round(figure_handle, axes_handle, level, 
             shake_frames = 45;
             hit_flash_frames = 10;
             set(boss_dark, "Visible", "on");
+            play_sfx(figure_handle, "boss");
             set([boss_fins, boss_body, boss_stripe, boss_eye], "Visible", "on");
             if boss_species == 6
                 set(boss_glow, "Visible", "on");
@@ -654,33 +949,39 @@ function [outcome, final_score] = play_round(figure_handle, axes_handle, level, 
             to_player = [player_x - boss_x, player_y - boss_y];
             distance_to_player = max(norm(to_player), 0.001);
             boss_step = [0 0];
+            boss_rage = player_size >= 0.85 * boss_win_size;
+            boss_speed_now = boss_speed * (1 + 0.2 * boss_rage);
             if boss_edible
                 boss_mode = "flee";
                 away_vector = -to_player / distance_to_player;
                 center_pull = [world_width / 2 - boss_x, world_height / 2 - boss_y];
                 center_pull = center_pull / max(norm(center_pull), 1);
                 flee_vector = away_vector + 0.35 * center_pull;
-                boss_step = 0.9 * boss_speed * flee_vector / max(norm(flee_vector), 0.001);
+                boss_step = 0.75 * boss_speed * flee_vector / max(norm(flee_vector), 0.001);
             else
                 switch boss_mode
                     case "chase"
-                        boss_step = boss_speed * to_player / distance_to_player;
+                        boss_step = boss_speed_now * to_player / distance_to_player;
                         boss_timer = boss_timer - 1;
                         if boss_timer <= 0
                             boss_mode = "telegraph";
                             boss_timer = telegraph_frames;
-                            dash_vector = to_player / distance_to_player;
+                            aim_point = [player_x, player_y] + velocity * player_speed * 0.5 * telegraph_frames;
+                            aim_point(1) = min(max(aim_point(1), 0), world_width);
+                            aim_point(2) = min(max(aim_point(2), 6), world_height - 8);
+                            aim_vector = aim_point - [boss_x, boss_y];
+                            dash_vector = aim_vector / max(norm(aim_vector), 0.001);
                             boss_combo = boss_combo_max;
                         endif
                     case "telegraph"
                         boss_timer = boss_timer - 1;
                         if boss_timer <= 0
                             boss_mode = "dash";
-                            boss_timer = 14;
+                            boss_timer = 16;
                             shake_frames = 6;
                         endif
                     case "dash"
-                        boss_step = 2.4 * boss_speed * dash_vector;
+                        boss_step = 2.8 * boss_speed_now * dash_vector;
                         boss_timer = boss_timer - 1;
                         if boss_timer <= 0
                             if boss_combo > 0
@@ -719,6 +1020,7 @@ function [outcome, final_score] = play_round(figure_handle, axes_handle, level, 
 
         if player_hit && invulnerable_frames == 0
             lives = lives - 1;
+            play_sfx(figure_handle, "hit");
             invulnerable_frames = 60;
             player_size = max(start_size, player_size * 0.95);
             hit_flash_frames = 6;
@@ -909,17 +1211,22 @@ function [outcome, final_score] = play_round(figure_handle, axes_handle, level, 
             endif
         endfor
         progress_ratio = min(player_size / boss_win_size, 1);
-        set(progress_bar, "XData", [70 70 + 28 * progress_ratio 70 + 28 * progress_ratio 70]);
-        set(hud_text, "String", sprintf("Lv %d/%d   Score %d   Best %d", level, level_count, ...
-                                        score, max(best_score, score)));
+        set(progress_bar, "XData", [66, 66 + 22 * progress_ratio, 66 + 22 * progress_ratio, 66]);
+        if displayed_score < score
+            displayed_score = min(score, displayed_score + max(1, ceil((score - displayed_score) * 0.2)));
+        endif
+        set(score_hud, "String", sprintf("SCORE  %d", displayed_score));
+        set(best_hud, "String", sprintf("BEST %d", max(best_score, score)));
         drawnow;
         pause(frame_pause);
 
         if boss_defeated
             outcome = "win";
+            play_sfx(figure_handle, "win");
             score = score + 100 * lives;
         elseif lives <= 0
             outcome = "lose";
+            play_sfx(figure_handle, "lose");
         endif
     endwhile
     set(axes_handle, "XLim", [0 world_width], "YLim", [0 world_height]);
@@ -942,22 +1249,32 @@ axes_handle = axes("Parent", figure_handle, "Position", [0 0 1 1], "XLim", [0 10
                    "Box", "on");
 hold(axes_handle, "on");
 
+setappdata(figure_handle, "sound_on", 1);
+setappdata(figure_handle, "sound_ok", 1);
 draw_sea_background(axes_handle, 1);
-rules_text = {"Eat smaller fish to grow. A BOSS arrives when you are big.", ...
-              "Grow even bigger than the boss, then EAT it to win the level!", ...
-              "Green = edible    Red = DANGER (they hunt you!)    Yellow = same size", ...
-              "Red dashed line = the boss is about to charge (sometimes twice!)", ...
-              "Getting bitten costs a life and makes you shrink a little", ...
-              "4 lives (3 in level 5)  -  5 levels  -  5 bosses", "", ...
-              "Move: arrow keys or Z Q S D / W A S D (SPACE = stop)", ...
-              "ESC = quit", "", "Press SPACE to start"};
-start_screen = show_screen(axes_handle, "ABYSS FEAST", rules_text, [0.05 0.25 0.45]);
-key = wait_for_key(figure_handle, {"space", "escape"});
+menu_handles = draw_title_menu(figure_handle, axes_handle);
+in_menu = true;
+while in_menu && ishandle(figure_handle)
+    key = wait_for_key(figure_handle, {"click_play", "space", "return", "click_settings", ...
+                                       "s", "m", "escape"});
+    switch key
+        case {"click_play", "space", "return"}
+            in_menu = false;
+        case {"click_settings", "s"}
+            show_settings(figure_handle, axes_handle);
+        case "m"
+            if isequal(getappdata(figure_handle, "sound_on"), 1)
+                setappdata(figure_handle, "sound_on", 0);
+            else
+                setappdata(figure_handle, "sound_on", 1);
+            endif
+        case "escape"
+            keep_playing = false;
+            in_menu = false;
+    endswitch
+endwhile
 if ishandle(figure_handle)
-    delete(start_screen);
-endif
-if strcmp(key, "escape")
-    keep_playing = false;
+    delete(menu_handles(ishandle(menu_handles)));
 endif
 
 while keep_playing && ishandle(figure_handle)
