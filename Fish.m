@@ -1,3 +1,105 @@
+%==========================================================================
+% ABYSS FEAST
+%==========================================================================
+% CONTEXT
+%   Small "eat or be eaten" game, inspired by .io fish games. Written for TechnEx TP1 Coding.
+%
+% GOAL OF THE GAME
+%   Cross 5 underwater levels. In each level, eat smaller fish to grow,
+%   wait for the boss to arrive, grow even bigger than the boss and eat it.
+%
+% GAME COMPONENTS (objects shown on the screen)
+%   - Player fish (orange): body, stripe, fins, eye, swimming tail
+%   - Special fish : lime green
+%   - Enemy fish of 6 species: reef fish, puffer, eel, needlefish, shark,
+%     angler. Colour tells the danger:
+%         green  = smaller than you (you can eat it)
+%         red    = bigger than you (it can eat you)
+%         yellow = same size (you only bump into each other)
+%   - One BOSS per level (Giant Puffer, Barracuda, Moray Boss, Anglerfish
+%     King, Megalodon). The boss chases you and charges (red dashed line
+%     = warning). When you are bigger than the boss, it turns green and
+%     flees: catch it to win the level.
+%   - Golden pearls : collectible bonus objects that gives extra points
+%   - Hearts : restores one lost life
+%   - Shield : protects player one time
+%   - Progression bar : % of growth before boss appearance
+%   - 5 decors with background effects: Sunny Reef, Kelp Forest, Sunken Ship, Magma Trench, The Abyss
+%   - Effects: bubbles, plankton, tiny fish schools, moving seaweed,
+%     moving crabs, sparkles and "+points" text, red flash when hit, screen
+%     shake for boss events, blinking while protected, banners,
+%     golden flash when bonus mission completed
+%   - HUD: lives (small fish icons), level, score, best score
+%   - Title menu (big title, PLAY and SETTINGS buttons) and a SETTINGS panel
+%     (goal, how to play, sound on/off), also reachable in game (gear icon)
+%   - Message panels: level cleared, game over, final win
+%
+% VARIABLES (properties of the objects)
+%   - player_x, player_y, player_size, player_dir_x, velocity, lives, score
+%   - enemy_x, enemy_y, enemy_size, enemy_dir, enemy_speed, enemy_species
+%   - boss_x, boss_y, boss_dir, boss_mode, boss_timer, boss_size
+%   - bubble_x, bubble_y, sil_x, sil_y (background fish), level, best_score
+%
+% MAIN LOOP (during one trial = one level)
+%   1. Read the last key pressed (changes the swimming direction)
+%   2. Move the player (speed decreases slightly when the fish grows)
+%   3. Move every enemy fish; respawn them when they leave the screen
+%   4. Boss: arrives when the player is big enough, then chases, warns,
+%      dashes (or flees when the player is bigger than the boss)
+%   5. Collisions: eat (grow + points), get eaten (lose a life, short
+%      protection) or bump (same size)
+%   6. Update the decor, effects, graphics and the HUD
+%   7. End of the level: boss eaten = win, no life left = lose
+%
+% ACROSS TRIALS
+%   - Win  : next level (new decor, new fish species, faster, harder boss)
+%   - Lose : same level again, with new random fish (never identical)
+%   - Size, lives and fish are reset at each level; the score is kept
+%   - After level 5 the game restarts from level 1 (new game)
+%   - The best score is saved in the text file abyss_best_score.txt
+%
+% RULES
+%   - Eat a fish smaller than you: you grow and earn points
+%   - Touch a bigger fish or a dangerous boss: you lose 1 life (4 lives,
+%     3 in level 5) and your fish shrinks by 5 percent
+%   - Red fish show teeth, an angry brow and red eyes, and
+%     they HUNT you when you are close. Bosses are darker, have a red aura,
+%     fangs, red eyes, shake before a charge, and chain several charges.
+%   - BOSS arrives at a given size when progression bar is full;
+%     eat it once you are bigger than it
+%   - SPECIAL FISH appear from time to time (harmless, glowing): 
+%     eat it to wipe out the red fish around you
+%   - BONUS MISSION : optional objective in each level
+%     that gives extra points when completed
+%   - BONUSES :
+%      Golden pearl gives extra point
+%      Heart gives one life back
+%      Shield protects from one red fish bite
+%
+% WAYS TO MOVE
+%   - Arrow keys or Z Q S D (AZERTY) or W A S D (QWERTY): swimming direction
+%   - SPACE : stop swimming      - ESC : quit      - R : replay/next level
+%   - P or gear icon : settings      - M : sound on/off (mouse clicks work too)
+%
+% SOURCES (AI / sound / image / word list)
+%   - No external image, sound or word list: all graphics are drawn by
+%     the code, and the sounds are small tones computed by the code.
+%     Code structure written with Claude.ai (Anthropic)
+%   - Music: files abyss_music.wav (game) and abyss_boss.wav (boss)
+%     MUST BE PLACED IN THE SAME FOLDER as this file (no file = no music)
+%
+% VERSIONS
+%   - Octave version : 11.3.0
+%   - Code version   : 9
+%
+% AUTHORS AND CONTRIBUTION
+%   - SIGHIERI Manon : base game, difficulty level adjustment, game and boss music, comments
+%   - ECHEVERRIA COBO Paula : graphics and background effects, difficulty level adjustment, main and in-game menu, progression bar, special fish addition, combo system, bonuses and bonus mission
+%   - PETERFALVI Jeanne : levels, species and bosses addition, difficulty level adjustment, minor bug fix, background music, header
+%
+% DATE (format: dd/mm/yyyy)
+%   - 08/10/2026
+%==========================================================================
 1;   % Run the script
 
 %--------------------------------------------------------------------------
