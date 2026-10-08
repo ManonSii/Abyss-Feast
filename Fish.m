@@ -1,72 +1,92 @@
-1;
+1;   % Run the script
 
+%--------------------------------------------------------------------------
+%Function to detect the last key pressed by the player
+%--------------------------------------------------------------------------
 function key_handler(figure_handle, key_event)
+    % Save the pressed key for the game
     if isfield(key_event, "Key")
         setappdata(figure_handle, "last_key", lower(key_event.Key));
     endif
 endfunction
 
+%--------------------------------------------------------------------------
+% Wait until one of the valide key is pressed
+%--------------------------------------------------------------------------
 function key = wait_for_key(figure_handle, valid_keys)
     key = "";
     setappdata(figure_handle, "last_key", "");
+    % Loop until a valid key is found or the window is closed
     while isempty(key) && ishandle(figure_handle)
         pause(0.05);
-        update_music(figure_handle);
+        update_music(figure_handle);               % keep the music looping
         candidate = getappdata(figure_handle, "last_key");
         if ismember(candidate, valid_keys)
             key = candidate;
         endif
     endwhile
+    % A closed window is treated as a request to quit
     if ~ishandle(figure_handle)
         key = "escape";
     endif
 endfunction
 
+%--------------------------------------------------------------------------
+% Functions to handle mouse clicks
+%--------------------------------------------------------------------------
 function register_zone(figure_handle, left, right, bottom, top, click_key, owner_handle)
-    zones = getappdata(figure_handle, "click_zones");
-    if isempty(zones)
+    zones = getappdata(figure_handle, "click_zones"); % Get the existing click zones
+    if isempty(zones)     % Create the list if it does not exist
         zones = cell(0, 6);
     endif
+    % Remove zones whose buttons no longer exist
     keep = false(1, size(zones, 1));
     for k = 1:size(zones, 1)
         keep(k) = ishandle(zones{k, 6});
     endfor
-    zones = zones(keep, :);
+    zones = zones(keep, :); % Add the new click zone
     zones(end + 1, :) = {left, right, bottom, top, click_key, owner_handle};
     setappdata(figure_handle, "click_zones", zones);
 endfunction
 
-function click_handler(figure_handle, mouse_event)
+function click_handler(figure_handle, mouse_event)  % Get the click zones and the main axes
     zones = getappdata(figure_handle, "click_zones");
     axes_handle = getappdata(figure_handle, "main_axes");
-    if isempty(zones) || isempty(axes_handle) || ~ishandle(axes_handle)
+    if isempty(zones) || isempty(axes_handle) || ~ishandle(axes_handle)  % Stop if the zones or axes are not available
         return;
     endif
-    point = get(axes_handle, "CurrentPoint");
+    point = get(axes_handle, "CurrentPoint"); % Get the mouse position
     x = point(1, 1);
     y = point(1, 2);
+    % Check which button was clicked
     for k = size(zones, 1):-1:1
         if ishandle(zones{k, 6}) && x >= zones{k, 1} && x <= zones{k, 2} && ...
            y >= zones{k, 3} && y <= zones{k, 4}
-            setappdata(figure_handle, "last_key", zones{k, 5});
+            setappdata(figure_handle, "last_key", zones{k, 5}); % Save the button action
             return;
         endif
     endfor
 endfunction
 
+%--------------------------------------------------------------------------
+% Functions for background music
+%   abyss_music.wav = normal music      abyss_boss.wav = music when a boss arrives
+%--------------------------------------------------------------------------
+% Create a music player from a wav file
 function player = make_music_player(music_file)
     player = [];
     try
         if exist(music_file, "file") == 2
             [wave, fs] = audioread(music_file);
-            wave = mean(wave, 2);
+            wave = mean(wave, 2);                  % Convert to mono
             player = audioplayer(wave, fs);
         endif
     catch
-        player = [];
+        player = [];                               % No music if the file cannot be read
     end_try_catch
 endfunction
 
+% Play the music of the current mode ("normal" or "boss"), loop it, stop it if muted
 function update_music(figure_handle)
     if ~ishandle(figure_handle)
         return;
@@ -85,12 +105,12 @@ function update_music(figure_handle)
     endif
     try
         if ~isempty(other) && isplaying(other)
-            stop(other);
+            stop(other);                           % the other music stops
         endif
         if ~isempty(wanted)
             if isequal(getappdata(figure_handle, "sound_on"), 1)
                 if ~isplaying(wanted)
-                    play(wanted);
+                    play(wanted);                  % (re)start = loop
                 endif
             elseif isplaying(wanted)
                 stop(wanted);
@@ -101,17 +121,25 @@ function update_music(figure_handle)
     end_try_catch
 endfunction
 
+%--------------------------------------------------------------------------
+% Function: table for the 6 fish species
+% Stores the size and shape settings for each fish
+%--------------------------------------------------------------------------
 function species_table = get_species_table()
-    species_table = [1.00 0.60 1.00 0.70 1.00 0.95 1.00 0;
-                     0.85 0.85 0.50 0.45 1.15 1.05 1.00 0;
-                     1.50 0.25 0.90 0.35 0.50 0.45 1.00 0;
-                     1.30 0.28 0.90 0.50 0.55 0.50 0.60 1;
-                     1.50 0.50 0.90 0.90 1.50 0.80 0.50 0;
-                     0.95 0.85 0.50 0.55 1.15 1.05 1.00 2];
+    species_table = [1.00 0.60 1.00 0.70 1.00 0.95 1.00 0;     % 1 reef fish
+                     0.85 0.85 0.50 0.45 1.15 1.05 1.00 0;     % 2 puffer
+                     1.50 0.25 0.90 0.35 0.50 0.45 1.00 0;     % 3 eel
+                     1.30 0.28 0.90 0.50 0.55 0.50 0.60 1;     % 4 needlefish
+                     1.50 0.50 0.90 0.90 1.50 0.80 0.50 0;     % 5 shark
+                     0.95 0.85 0.50 0.55 1.15 1.05 1.00 2];    % 6 angler
 endfunction
 
+%--------------------------------------------------------------------------
+% Function: create the shape of one fish
+%--------------------------------------------------------------------------
 function [body_x, body_y, fins_x, fins_y, stripe_x, stripe_y, eye_x, eye_y] = ...
         fish_shape(x, y, fish_size, direction, wiggle, species)
+    % Species 1 (reef fish) is the default, used by the player
     if nargin < 6
         species = 1;
     endif
@@ -125,10 +153,12 @@ function [body_x, body_y, fins_x, fins_y, stripe_x, stripe_y, eye_x, eye_y] = ..
     notch       = species_table(species, 7);
     accessory   = species_table(species, 8);
 
+    % Ellipse body
     angle_vector = linspace(0, 2*pi, 28);
     body_x = x + fish_size * len * cos(angle_vector);
     body_y = y + fish_size * hgt * sin(angle_vector);
 
+    % Tail (can be forked), top fin and bottom fin (relative coordinates)
     tail_tip_x = -(0.8 * len + tail_len);
     tail_x = [-0.7 * len; tail_tip_x; -(0.8 * len + tail_len * notch); tail_tip_x; -0.7 * len];
     tail_y = [0.1 * tail_h; tail_h; 0; -tail_h; -0.1 * tail_h];
@@ -151,66 +181,85 @@ function [body_x, body_y, fins_x, fins_y, stripe_x, stripe_y, eye_x, eye_y] = ..
 
     fins_x = x + direction * fish_size * [tail_x, dorsal_x, ventral_x, acc_x];
     fins_y = y + fish_size * [tail_y, dorsal_y, ventral_y, acc_y];
+    % The tail moves up and down to look like swimming
     fins_y(2:4, 1) = fins_y(2:4, 1) + fish_size * wiggle;
 
+    % Draw the dark band on the fish
     u_start = 0.05;
     u_end   = 0.30;
     stripe_x = x + direction * fish_size * len * [u_start u_end u_end u_start];
     stripe_y = y + fish_size * hgt * [sqrt(1 - u_start^2) sqrt(1 - u_end^2) ...
                                       -sqrt(1 - u_end^2) -sqrt(1 - u_start^2)];
 
+    % Eye near the mouth
     eye_x = x + direction * 0.55 * len * fish_size;
     eye_y = y + 0.33 * hgt * fish_size;
 endfunction
 
+%--------------------------------------------------------------------------
+% Function: draw teeth and angry eyebrows
+%--------------------------------------------------------------------------
 function [teeth_x, teeth_y, brow_x, brow_y] = fish_menace(x, y, fish_size, direction, species)
     species_table = get_species_table();
     len = species_table(species, 1);
     hgt = species_table(species, 2);
+    % Draw teeth
     teeth_u = [0.97 0.90 0.84 0.78 0.72 0.66 0.60 0.54];
     teeth_v = [-0.02 -0.34 -0.10 -0.40 -0.14 -0.42 -0.16 -0.32];
     teeth_x = x + direction * fish_size * len * teeth_u;
     teeth_y = y + fish_size * hgt * teeth_v;
+    % Draw the angry eyebrows
     brow_x = x + direction * fish_size * len * [0.34 0.80];
     brow_y = y + fish_size * hgt * [0.66 0.40];
 endfunction
 
+%--------------------------------------------------------------------------
+% Function: check if the player touches another fish
+%--------------------------------------------------------------------------
 function hit = fish_overlap(player_x, player_y, player_size, fish_x, fish_y, fish_size, fish_species)
     species_table = get_species_table();
     half_length_sum = player_size * 1.0 + fish_size * species_table(fish_species, 1);
     half_height_sum = player_size * 0.6 + fish_size * species_table(fish_species, 2);
     dx = (player_x - fish_x) / half_length_sum;
     dy = (player_y - fish_y) / half_height_sum;
-    hit = (dx^2 + dy^2 < 0.5);
+    hit = (dx^2 + dy^2 < 0.5);                         % Check if the fish are close enough
 endfunction
 
+%--------------------------------------------------------------------------
+% Function: create a new enemy fish (species, size and speed)
+%--------------------------------------------------------------------------
 function [x, y, fish_size, direction, speed, species] = spawn_enemy(player_size, ...
         speed_factor, small_probability, allowed_species, world_width, world_height, ...
         player_x, player_y, initial_placement)
+    % Choose a random fish species
     species = allowed_species(randi(numel(allowed_species)));
-    species_speed = [1.0 0.7 1.2 1.5 1.0 0.6];
+    species_speed = [1.0 0.7 1.2 1.5 1.0 0.6];                   % speed of each species
+    % Create a smaller or bigger fish
     if rand < small_probability
-        fish_size = player_size * (0.45 + 0.45 * rand);
+        fish_size = player_size * (0.45 + 0.45 * rand);          % smaller fish
     else
-        fish_size = player_size * (1.15 + 0.90 * rand);
+        fish_size = player_size * (1.15 + 0.90 * rand);          % bigger fish
     endif
-    fish_size = min(max(fish_size, 0.8), 14);
-    direction = 2 * (rand > 0.5) - 1;
+    fish_size = min(max(fish_size, 0.8), 14);                    % keep a good size
+    direction = 2 * (rand > 0.5) - 1;                            % -1 = left, +1 = right (direction)
     speed     = speed_factor * species_speed(species) * (0.25 + 0.50 * rand);
-    speed     = min(speed, 1.4);
-    y         = 7 + (world_height - 18) * rand;
+    speed     = min(speed, 1.4);                                 % limit the speed
+    y         = 7 + (world_height - 18) * rand;                  % random height
     if initial_placement
+        % At the start of a round, keep fish away from the player
         x = world_width * rand;
         while hypot(x - player_x, y - player_y) < 28
             x = world_width * rand;
             y = 7 + (world_height - 18) * rand;
         endwhile
     else
+        % Later, fish enter the screen from the side
         if direction == 1
             x = -4 * fish_size;
         else
             x = world_width + 4 * fish_size;
         endif
+        % Too close to the player (player at the edge): enter from the other side
         if hypot(x - player_x, y - player_y) < 8 + 5 * fish_size
             direction = -direction;
             if direction == 1
@@ -222,6 +271,9 @@ function [x, y, fish_size, direction, speed, species] = spawn_enemy(player_size,
     endif
 endfunction
 
+%--------------------------------------------------------------------------
+% Function: load the best score from a file
+%--------------------------------------------------------------------------
 function best_score = load_best_score(file_name)
     best_score = 0;
     file_id = fopen(file_name, "r");
@@ -234,6 +286,9 @@ function best_score = load_best_score(file_name)
     endif
 endfunction
 
+%--------------------------------------------------------------------------
+% Function: save the best score in a text file
+%--------------------------------------------------------------------------
 function save_best_score(file_name, best_score)
     file_id = fopen(file_name, "w");
     if file_id ~= -1
@@ -242,6 +297,9 @@ function save_best_score(file_name, best_score)
     endif
 endfunction
 
+%--------------------------------------------------------------------------
+% Function: animate the seaweed
+%--------------------------------------------------------------------------
 function update_seaweed(seaweed_handles, seaweed_base_x, seaweed_top_y, frame_count)
     for k = 1:numel(seaweed_handles)
         seaweed_y = linspace(3.5, seaweed_top_y(k), 20);
@@ -252,39 +310,43 @@ function update_seaweed(seaweed_handles, seaweed_base_x, seaweed_top_y, frame_co
     endfor
 endfunction
 
+%--------------------------------------------------------------------------
+% Function: draw the background for each level
+%--------------------------------------------------------------------------
 function [seaweed_handles, seaweed_base_x, seaweed_top_y, theme] = draw_sea_background(axes_handle, level)
     cla(axes_handle);
 
+    % Colours and plants of each level
     switch level
-        case 1
+        case 1      % Sunny Reef
             deep_color = [0.02 0.30 0.50];  surface_color = [0.35 0.85 0.95];
             ray_alpha = 0.10;  sand_color = [0.95 0.88 0.60];  sand_edge = [0.80 0.70 0.40];
             rock_color = [0.45 0.47 0.52];  plant_color = [0.05 0.55 0.20];
             seaweed_base_x = [6 22 30 58 66 90];
             seaweed_top_y  = [16 20 14 22 15 19];
             theme.sil_color = [0.10 0.45 0.65];  theme.bubble_color = [1 1 1];
-        case 2
+        case 2      % Kelp Forest
             deep_color = [0.02 0.18 0.18];  surface_color = [0.30 0.65 0.50];
             ray_alpha = 0.12;  sand_color = [0.55 0.50 0.30];  sand_edge = [0.40 0.35 0.20];
             rock_color = [0.35 0.40 0.30];  plant_color = [0.15 0.45 0.10];
             seaweed_base_x = [4 14 24 34 46 58 70 82 94];
             seaweed_top_y  = [30 38 26 40 32 36 28 34 30];
             theme.sil_color = [0.08 0.30 0.30];  theme.bubble_color = [0.9 1 0.9];
-        case 3
+        case 3      % Sunken Ship
             deep_color = [0.02 0.07 0.20];  surface_color = [0.18 0.42 0.65];
             ray_alpha = 0.08;  sand_color = [0.50 0.50 0.48];  sand_edge = [0.30 0.30 0.30];
             rock_color = [0.30 0.33 0.38];  plant_color = [0.10 0.40 0.35];
             seaweed_base_x = [6 18 30 40];
             seaweed_top_y  = [14 18 12 16];
             theme.sil_color = [0.05 0.18 0.35];  theme.bubble_color = [0.9 0.95 1];
-        case 4
+        case 4      % Magma Trench
             deep_color = [0.45 0.10 0.02];  surface_color = [0.08 0.05 0.15];
             ray_alpha = 0;     sand_color = [0.22 0.12 0.10];  sand_edge = [0.60 0.20 0.05];
             rock_color = [0.12 0.07 0.06];  plant_color = [0.85 0.30 0.10];
             seaweed_base_x = [6 16 26 36 46 54];
             seaweed_top_y  = [10 14 9 12 11 13];
             theme.sil_color = [0.28 0.08 0.08];  theme.bubble_color = [1 0.7 0.3];
-        otherwise
+        otherwise   % The Abyss
             deep_color = [0.00 0.00 0.03];  surface_color = [0.02 0.05 0.14];
             ray_alpha = 0;     sand_color = [0.06 0.06 0.10];  sand_edge = [0.15 0.15 0.30];
             rock_color = [0.10 0.10 0.18];  plant_color = [0.10 0.80 0.80];
@@ -293,6 +355,7 @@ function [seaweed_handles, seaweed_base_x, seaweed_top_y, theme] = draw_sea_back
             theme.sil_color = [0.05 0.12 0.22];  theme.bubble_color = [0.5 0.9 1];
     endswitch
 
+    % Draw the water background
     band_count = 24;
     for band = 1:band_count
         mix = (band - 1) / (band_count - 1);
@@ -303,6 +366,7 @@ function [seaweed_handles, seaweed_base_x, seaweed_top_y, theme] = draw_sea_back
               "FaceColor", band_color, "EdgeColor", "none", "Parent", axes_handle);
     endfor
 
+    % Light rays coming from the surface
     if ray_alpha > 0
         ray_start_x = [12 38 64 86];
         for k = 1:numel(ray_start_x)
@@ -312,8 +376,9 @@ function [seaweed_handles, seaweed_base_x, seaweed_top_y, theme] = draw_sea_back
         endfor
     endif
 
+    % Special decor of each level
     switch level
-        case 3
+        case 3      % Shipwreck
             patch("XData", [44 52 90 98], "YData", [13 4 4 13], "FaceColor", [0.22 0.14 0.10], ...
                   "EdgeColor", [0.10 0.07 0.05], "LineWidth", 2, "Parent", axes_handle);
             patch("XData", [60 60 80 80], "YData", [13 20 20 13], "FaceColor", [0.28 0.18 0.12], ...
@@ -325,7 +390,7 @@ function [seaweed_handles, seaweed_base_x, seaweed_top_y, theme] = draw_sea_back
             line("XData", [52 60 86], "YData", [9 9 9], "LineStyle", "none", "Marker", "o", ...
                  "MarkerSize", 6, "MarkerFaceColor", [0.95 0.80 0.35], "Color", [0.1 0.07 0.05], ...
                  "Parent", axes_handle);
-        case 4
+        case 4      % Volcano with lava
             patch("XData", [0 100 100 0], "YData", [0 0 16 16], "FaceColor", [1 0.4 0.05], ...
                   "FaceAlpha", 0.18, "EdgeColor", "none", "Parent", axes_handle);
             patch("XData", [58 76 80 84 102], "YData", [3 23 21 23 3], "FaceColor", [0.18 0.09 0.08], ...
@@ -336,7 +401,7 @@ function [seaweed_handles, seaweed_base_x, seaweed_top_y, theme] = draw_sea_back
                  "LineWidth", 3, "Parent", axes_handle);
             line("XData", [81 84 90], "YData", [21 13 5], "Color", [1 0.45 0.05], ...
                  "LineWidth", 3, "Parent", axes_handle);
-        case 5
+        case 5      % Bioluminescent lights
             line("XData", 100 * rand(1, 30), "YData", 8 + 46 * rand(1, 30), "LineStyle", "none", ...
                  "Marker", "o", "MarkerSize", 2, "MarkerFaceColor", [0.4 0.9 1], ...
                  "Color", [0.4 0.9 1], "Parent", axes_handle);
@@ -345,11 +410,13 @@ function [seaweed_handles, seaweed_base_x, seaweed_top_y, theme] = draw_sea_back
                  "Color", [0.8 0.3 1], "Parent", axes_handle);
     endswitch
 
+    % Draw the sand at the bottom
     dune_x = linspace(0, 100, 80);
     dune_y = 3.5 + 1.2 * sin(dune_x / 7) + 0.6 * sin(dune_x / 3);
     patch("XData", [dune_x 100 0], "YData", [dune_y 0 0], "FaceColor", sand_color, ...
           "EdgeColor", sand_edge, "Parent", axes_handle);
 
+    % Draw the rocks
     rock_angle = linspace(0, pi, 20);
     rock_centers = [18 47 78];
     rock_widths  = [4 6 3.5];
@@ -360,6 +427,7 @@ function [seaweed_handles, seaweed_base_x, seaweed_top_y, theme] = draw_sea_back
               "EdgeColor", 0.5 * rock_color, "Parent", axes_handle);
     endfor
 
+    % Add coral in the Sunny Reef
     if level == 1
         line("XData", [38 38 36 38 40], "YData", [4 8 11 8 11], "Color", [0.95 0.40 0.55], ...
              "LineWidth", 4, "Parent", axes_handle);
@@ -369,6 +437,7 @@ function [seaweed_handles, seaweed_base_x, seaweed_top_y, theme] = draw_sea_back
              "LineWidth", 4, "Parent", axes_handle);
     endif
 
+    % Add the plants
     seaweed_handles = zeros(1, numel(seaweed_base_x));
     for k = 1:numel(seaweed_base_x)
         plant_shade = min(plant_color * (0.8 + 0.1 * mod(k, 3)), 1);
@@ -380,7 +449,11 @@ function [seaweed_handles, seaweed_base_x, seaweed_top_y, theme] = draw_sea_back
     update_seaweed(seaweed_handles, seaweed_base_x, seaweed_top_y, 0);
 endfunction
 
+%--------------------------------------------------------------------------
+% Function: show a message screen (title, rules, win, game over)
+%--------------------------------------------------------------------------
 function screen_handles = show_screen(axes_handle, title_text, text_lines, panel_color)
+    % Draw the shadow, panel and text
     shadow = patch("XData", [12 92 92 12], "YData", [4 4 52 52], "FaceColor", [0 0 0], ...
                    "EdgeColor", "none", "Parent", axes_handle);
     panel = patch("XData", [10 90 90 10], "YData", [6 6 54 54], "FaceColor", panel_color, ...
@@ -399,6 +472,9 @@ function screen_handles = show_screen(axes_handle, title_text, text_lines, panel
     screen_handles = [shadow, panel, title_shadow, title_main, message];
 endfunction
 
+%--------------------------------------------------------------------------
+% Function: keep round shapes looking correct
+%--------------------------------------------------------------------------
 function ratio = x_scale_ratio(axes_handle)
     ratio = 1;
     try
@@ -410,6 +486,9 @@ function ratio = x_scale_ratio(axes_handle)
     end_try_catch
 endfunction
 
+%--------------------------------------------------------------------------
+% Function: create the shape of a gear (settings)
+%--------------------------------------------------------------------------
 function [gear_x, gear_y] = gear_shape(center_x, center_y, radius, x_ratio)
     tooth_count = 8;
     inner_radius = 0.72 * radius;
@@ -425,6 +504,9 @@ function [gear_x, gear_y] = gear_shape(center_x, center_y, radius, x_ratio)
     endfor
 endfunction
 
+%--------------------------------------------------------------------------
+% Function: draw a gear icon
+%--------------------------------------------------------------------------
 function gear_handles = draw_gear(axes_handle, center_x, center_y, radius, gear_color, hole_color)
     x_ratio = x_scale_ratio(axes_handle);
     [gear_x, gear_y] = gear_shape(center_x, center_y, radius, x_ratio);
@@ -437,6 +519,9 @@ function gear_handles = draw_gear(axes_handle, center_x, center_y, radius, gear_
     gear_handles = [gear_body, gear_hole];
 endfunction
 
+%--------------------------------------------------------------------------
+% Function: draw a fish that does not move (decoration of the title menu)
+%--------------------------------------------------------------------------
 function fish_handles = draw_static_fish(axes_handle, x, y, fish_size, direction, species, body_color, scary)
     [bx, by, fx, fy, sx, sy, ex, ey] = fish_shape(x, y, fish_size, direction, 0.15, species);
     fins   = patch("XData", fx, "YData", fy, "FaceColor", 0.7 * body_color, ...
@@ -464,6 +549,9 @@ function fish_handles = draw_static_fish(axes_handle, x, y, fish_size, direction
     endif
 endfunction
 
+%--------------------------------------------------------------------------
+% function: play a short sound effect
+%--------------------------------------------------------------------------
 function play_sfx(figure_handle, kind)
     if ~isequal(getappdata(figure_handle, "sound_on"), 1) || ...
        ~isequal(getappdata(figure_handle, "sound_ok"), 1)
@@ -471,31 +559,31 @@ function play_sfx(figure_handle, kind)
     endif
     fs = 8000;
     switch kind
-        case "eat"
+        case "eat"          % Sound when a fish is eaten
             t = (0:round(0.10 * fs)) / fs;
             wave = 0.35 * sin(2*pi*(500*t + 3500*t.^2)) .* (1 - t / 0.10);
-        case "hit"
+        case "hit"          % Sound when the player is hit
             t = (0:round(0.30 * fs)) / fs;
             wave = 0.40 * sign(sin(2*pi*(180*t - 250*t.^2))) .* (1 - t / 0.30);
-        case "boss"
+        case "boss"         % Sound when the boss appears
             t = (0:round(0.70 * fs)) / fs;
             wave = 0.50 * sin(2*pi*(60*t + 20*t.^2)) .* (0.6 + 0.4*sin(2*pi*16*t)) ...
                    .* (1 - 0.4 * t / 0.70);
-        case "win"
+        case "win"          % Sound when the player wins
             notes = [523 659 784 1047];
             wave = [];
             t = (0:round(0.12 * fs)) / fs;
             for k = 1:numel(notes)
                 wave = [wave, 0.35 * sin(2*pi*notes(k)*t) .* (1 - 0.6 * t / 0.12)];
             endfor
-        case "lose"
+        case "lose"         % Sound when the player loses
             notes = [392 330 262 196];
             wave = [];
             t = (0:round(0.15 * fs)) / fs;
             for k = 1:numel(notes)
                 wave = [wave, 0.35 * sin(2*pi*notes(k)*t) .* (1 - 0.6 * t / 0.15)];
             endfor
-        case "click"
+        case "click" % Sound when a button is clicked
             t = (0:round(0.04 * fs)) / fs;
             wave = 0.30 * sin(2*pi*900*t) .* (1 - t / 0.04);
         otherwise
@@ -510,6 +598,9 @@ function play_sfx(figure_handle, kind)
     end_try_catch
 endfunction
 
+%--------------------------------------------------------------------------
+% Function: create a clickable button
+%--------------------------------------------------------------------------
 function button_handles = make_button(figure_handle, axes_handle, center_x, center_y, ...
         button_width, button_height, label, base_color, click_key, font_size)
     left   = center_x - button_width / 2;
@@ -535,10 +626,14 @@ function button_handles = make_button(figure_handle, axes_handle, center_x, cent
     button_handles = [shadow, body, shine, label_handle];
 endfunction
 
+%--------------------------------------------------------------------------
+% Function: draw the title menu
+%--------------------------------------------------------------------------
 function menu_handles = draw_title_menu(figure_handle, axes_handle)
     menu_handles = [];
     x_ratio = x_scale_ratio(axes_handle);
 
+    % Draw the dark background, bubbles and fish
     menu_handles(end + 1) = patch("XData", [0 100 100 0], "YData", [38.5 38.5 60 60], ...
                                   "FaceColor", [0 0.05 0.15], "FaceAlpha", 0.35, "EdgeColor", "none", ...
                                   "HitTest", "off", "Parent", axes_handle);
@@ -549,10 +644,12 @@ function menu_handles = draw_title_menu(figure_handle, axes_handle)
     fish_handles  = draw_static_fish(axes_handle, 85, 22.5, 3.0, 1, 1, [1 0.65 0.1], false);
     menu_handles = [menu_handles, shark_handles, fish_handles];
 
+    % Draw the game title
     title_lines  = {"A B Y S S", "F E A S T"};
     title_y      = [53.8, 45.4];
     title_colors = {[0.75 0.95 1.0], [1.0 0.75 0.15]};
     for k = 1:2
+        % Add the shadow and outline
         menu_handles(end + 1) = text(50.9, title_y(k) - 1.0, title_lines{k}, ...
             "HorizontalAlignment", "center", "VerticalAlignment", "middle", ...
             "FontUnits", "normalized", "FontSize", 0.17, "FontWeight", "bold", ...
@@ -572,6 +669,7 @@ function menu_handles = draw_title_menu(figure_handle, axes_handle)
         "VerticalAlignment", "middle", "FontUnits", "normalized", "FontSize", 0.036, ...
         "FontWeight", "bold", "Color", [0.8 0.95 1], "HitTest", "off", "Parent", axes_handle);
 
+    % Create the PLAY and SETTINGS buttons
     play_button = make_button(figure_handle, axes_handle, 50, 28.5, 40, 8.5, "PLAY", ...
                               [0.12 0.60 0.30], "click_play", 0.07);
     triangle = patch("XData", 37 + x_ratio * [-1.6 -1.6 1.8], "YData", 28.5 + [-2.2 2.2 0], ...
@@ -582,6 +680,7 @@ function menu_handles = draw_title_menu(figure_handle, axes_handle)
     set(gear_handles, "HitTest", "off");
     menu_handles = [menu_handles, play_button, triangle, settings_button, gear_handles];
 
+    % Show the keyboard controls
     menu_handles(end + 1) = patch("XData", [0 100 100 0], "YData", [4 4 10 10], "FaceColor", [0 0.05 0.15], ...
                                   "FaceAlpha", 0.35, "EdgeColor", "none", "HitTest", "off", ...
                                   "Parent", axes_handle);
@@ -590,8 +689,12 @@ function menu_handles = draw_title_menu(figure_handle, axes_handle)
         "FontSize", 0.028, "Color", [0.85 0.95 1], "HitTest", "off", "Parent", axes_handle);
 endfunction
 
+%--------------------------------------------------------------------------
+% Function: show the settings panel
+%--------------------------------------------------------------------------
 function show_settings(figure_handle, axes_handle)
     items = [];
+    % Draw the dark background and settings panel
     items(end + 1) = patch("XData", [0 100 100 0], "YData", [0 0 60 60], "FaceColor", [0 0 0], ...
                            "FaceAlpha", 0.65, "EdgeColor", "none", "Parent", axes_handle);
     items(end + 1) = patch("XData", [6 94 94 6], "YData", [3 3 57 57], "FaceColor", [0.04 0.18 0.32], ...
@@ -604,6 +707,7 @@ function show_settings(figure_handle, axes_handle)
                           "FontWeight", "bold", "Color", [1 0.85 0.2], "Parent", axes_handle);
     items = [items, draw_gear(axes_handle, 31, 51.5, 2.8, [1 0.85 0.2], [0.04 0.18 0.32])];
 
+    % Show the game instructions
     rows = { 45.4, "THE GOAL", 1;
              42.0, "Cross 5 levels. In each one, eat smaller fish to grow,", 0;
              39.1, "then beat the BOSS: get bigger than it and EAT it!", 0;
@@ -629,6 +733,7 @@ function show_settings(figure_handle, axes_handle)
                               "Parent", axes_handle);
     endfor
 
+    % Create the sound and BACK buttons
     sound_button = make_button(figure_handle, axes_handle, 30, 10.5, 34, 7.5, "SOUND: ON", ...
                                [0.12 0.60 0.30], "click_sound", 0.045);
     back_button  = make_button(figure_handle, axes_handle, 70, 10.5, 34, 7.5, "BACK", ...
@@ -646,7 +751,7 @@ function show_settings(figure_handle, axes_handle)
         endif
         key = wait_for_key(figure_handle, {"click_sound", "m", "click_back", "escape", ...
                                            "return", "space", "b", "p"});
-        if any(strcmp(key, {"click_sound", "m"}))
+        if any(strcmp(key, {"click_sound", "m"})) % Turn the sound on or off
             if isequal(getappdata(figure_handle, "sound_on"), 1)
                 setappdata(figure_handle, "sound_on", 0);
             else
@@ -657,39 +762,45 @@ function show_settings(figure_handle, axes_handle)
             done = true;
         endif
     endwhile
-    if ishandle(figure_handle)
+    if ishandle(figure_handle) % Remove the settings panel
         delete(items(ishandle(items)));
     endif
 endfunction
 
+%--------------------------------------------------------------------------
+% Play one level
+%--------------------------------------------------------------------------
 function [outcome, final_score] = play_round(figure_handle, axes_handle, level, best_score, start_score)
+    % Set the settings for each level
     level_names       = {"Sunny Reef", "Kelp Forest", "Sunken Ship", "Magma Trench", "The Abyss"};
     boss_names        = {"Giant Puffer", "Barracuda", "Moray Boss", "Anglerfish King", "Megalodon"};
-    boss_species_list = [2 4 3 6 5];
-    boss_size_list    = [8.0 9.0 10.0 11.0 12.0];
-    boss_trigger_list = [5.5 6.0 6.5 7.0 7.5];
-    boss_speed_list   = [0.55 0.64 0.72 0.80 0.86];
-    telegraph_list    = [30 27 24 21 18];
-    dash_wait_list    = [120 105 92 80 70];
-    small_prob_list   = [0.70 0.65 0.60 0.55 0.50];
+    boss_species_list = [2 4 3 6 5];               % species used for each boss
+    boss_size_list    = [8.0 9.0 10.0 11.0 12.0];    % size of each boss
+    boss_trigger_list = [5.5 6.0 6.5 7.0 7.5];     % player size that calls the boss
+    boss_speed_list   = [0.55 0.64 0.72 0.80 0.86];% boss speed
+    telegraph_list    = [30 27 24 21 18];          % warning time before an attack
+    dash_wait_list    = [120 105 92 80 70];       % Time between attacks
+    small_prob_list   = [0.70 0.65 0.60 0.55 0.50];% Chance of small fish
     species_lists     = {[1 1 2], [1 2 4], [1 3 4 2], [1 3 4 6], [1 2 3 4 5]};
-    combo_list        = [0 1 1 2 2];
-    lives_list        = [4 4 4 4 3];
-    hunt_radius_list  = [18 20 22 24 26];
-    hunt_boost_list   = [0.70 0.75 0.80 0.85 0.90];
+    combo_list        = [0 1 1 2 2];               % Number of extra attacks
+    lives_list        = [4 4 4 4 3];               % lives at each level
+    hunt_radius_list  = [18 20 22 24 26];          % distance at which red fish hunt you
+    hunt_boost_list   = [0.70 0.75 0.80 0.85 0.90];     % speed multiplier of hunting fish
 
-    world_width     = 100;
-    world_height    = 60;
-    start_size      = 2;
-    growth_ratio    = 0.25;
-    initial_lives   = lives_list(level);
-    base_speed      = 1.2;
-    frame_pause     = 0.02;
-    size_tolerance  = 1.05;
-    enemy_count     = 7 + level;
-    speed_factor    = 1 + 0.15 * (level - 1);
+    % --- Constants of the game ---
+    world_width     = 100;                         % width of the sea
+    world_height    = 60;                          % height of the sea
+    start_size      = 2;                           % size of the player at the start
+    growth_ratio    = 0.25;                        % Fish growth rate
+    initial_lives   = lives_list(level);                           % number of lives
+    base_speed      = 1.2;                         % player speed
+    frame_pause     = 0.02;                        % pause between frames (seconds)
+    size_tolerance  = 1.05;                        % size difference allowed
+    enemy_count     = 7 + level;                   % more fish at each level
+    speed_factor    = 1 + 0.15 * (level - 1);      % faster fish at each level
     level_count     = numel(level_names);
 
+    % --- Settings of the current level and of its boss ---
     boss_species    = boss_species_list(level);
     boss_size       = boss_size_list(level);
     boss_trigger    = boss_trigger_list(level);
@@ -698,43 +809,48 @@ function [outcome, final_score] = play_round(figure_handle, axes_handle, level, 
     dash_wait       = dash_wait_list(level);
     small_probability = small_prob_list(level);
     allowed_species = species_lists{level};
-    boss_win_size   = boss_size * size_tolerance;
+    boss_win_size   = boss_size * size_tolerance;  % size needed to eat the boss
     boss_combo_max  = combo_list(level);
     hunt_radius     = hunt_radius_list(level);
     hunt_boost      = hunt_boost_list(level);
 
+    % --- Variables of the player ---
     player_x     = world_width / 2;
     player_y     = world_height / 2;
     player_size  = start_size;
-    player_dir_x = 1;
-    velocity     = [0 0];
+    player_dir_x = 1;                              % +1 = looks right, -1 = looks left
+    velocity     = [0 0];                          % current swimming direction
     lives        = initial_lives;
     score        = start_score;
-    displayed_score = start_score;
-    invulnerable_frames = 0;
+    displayed_score = start_score;                 % score shown on the screen (counts up)
+    invulnerable_frames = 0;                       % frames without danger after a hit
     frame_count  = 0;
     outcome      = "playing";
     final_score  = start_score;
 
-    boss_active  = false;
+    % --- Variables of the boss ---
+    boss_active  = false;                          % true once the boss has arrived
     boss_defeated = false;
     boss_was_edible = false;
     boss_x = 0;  boss_y = 0;  boss_dir = 1;
-    boss_mode    = "chase";
+    boss_mode    = "chase";                        % boss movement mode
     boss_timer   = dash_wait;
     dash_vector  = [1 0];
-    boss_combo   = 0;
+    boss_combo   = 0;                              % Number of attacks left
 
-    burst_age     = 0;
+    % --- Variables of the effects ---
+    burst_age     = 0;                             % Sparkle effect
     burst_x       = 0;
     burst_y       = 0;
-    burst_angles  = linspace(0, 2*pi, 9)(1:8);
-    hit_flash_frames = 0;
-    shake_frames  = 0;
-    banner_frames = 100;
+    burst_angles  = linspace(0, 2*pi, 9)(1:8);     % Sparkle directions
+    hit_flash_frames = 0;                          % Red flash duration
+    shake_frames  = 0;                             % Screen shake duration
+    banner_frames = 100;                           % time the banner stay visible
 
+    % Draw the background first
     [seaweed_handles, seaweed_base_x, seaweed_top_y, theme] = draw_sea_background(axes_handle, level);
 
+    % Dark silhouettes of fish swimming slowly far in the background
     sil_count   = 3;
     sil_species = [1 5 1];
     sil_x       = world_width * rand(1, sil_count);
@@ -752,6 +868,7 @@ function [outcome, final_score] = play_round(figure_handle, axes_handle, level, 
                             "EdgeColor", "none", "Parent", axes_handle);
     endfor
 
+    % Bubbles: 10 small and 5 big ones
     bubble_x = world_width * rand(1, 15);
     bubble_y = world_height * rand(1, 15);
     bubble_rise = [0.25 * ones(1, 10), 0.40 * ones(1, 5)];
@@ -762,10 +879,12 @@ function [outcome, final_score] = play_round(figure_handle, axes_handle, level, 
                       "Marker", "o", "MarkerSize", 7, "Color", theme.bubble_color, ...
                       "Parent", axes_handle);
 
+    % Darken the background when the boss appears on the screen
     boss_dark = patch("XData", [0 100 100 0], "YData", [0 0 60 60], "FaceColor", [0 0 0], ...
                       "FaceAlpha", 0.22, "EdgeColor", "none", "Visible", "off", ...
                       "Parent", axes_handle);
 
+    % Player graphics
     [bx, by, fx, fy, sx, sy, ex, ey] = fish_shape(player_x, player_y, player_size, player_dir_x, 0);
     player_fins   = patch("XData", fx, "YData", fy, "FaceColor", [0.85 0.35 0.05], ...
                           "EdgeColor", [0.4 0.2 0], "Parent", axes_handle);
@@ -777,6 +896,7 @@ function [outcome, final_score] = play_round(figure_handle, axes_handle, level, 
                          "MarkerSize", 6, "MarkerFaceColor", [1 1 1], "Color", [0 0 0], ...
                          "Parent", axes_handle);
 
+    % Enemy variables and graphics (one entry per fish)
     enemy_x       = zeros(1, enemy_count);
     enemy_y       = zeros(1, enemy_count);
     enemy_size    = zeros(1, enemy_count);
@@ -812,6 +932,7 @@ function [outcome, final_score] = play_round(figure_handle, axes_handle, level, 
                                "Visible", "off", "Parent", axes_handle);
     endfor
 
+    % Boss graphics (hidden until the boss arrives)
     [bx, by, fx, fy, sx, sy, ex, ey] = fish_shape(0, 0, boss_size, 1, 0, boss_species);
     [tx, ty, brx, bry] = fish_menace(0, 0, boss_size, 1, boss_species);
     boss_aura   = patch("XData", 1.3 * bx, "YData", 1.3 * by, "FaceColor", [1 0 0], ...
@@ -838,6 +959,7 @@ function [outcome, final_score] = play_round(figure_handle, axes_handle, level, 
                         "FontSize", 0.12, "FontWeight", "bold", "Color", [1 0.1 0.1], ...
                         "Visible", "off", "Parent", axes_handle);
 
+    % Effects: sparkles, floating points and banner
     burst_handle = line("XData", zeros(1, 8), "YData", zeros(1, 8), "LineStyle", "none", ...
                         "Marker", ".", "MarkerSize", 14, "Color", [1 0.95 0.4], ...
                         "Visible", "off", "Parent", axes_handle);
@@ -849,6 +971,8 @@ function [outcome, final_score] = play_round(figure_handle, axes_handle, level, 
                        "FontSize", 0.06, "FontWeight", "bold", "Color", [1 0.9 0.3], ...
                        "Parent", axes_handle);
 
+    % HUD top left: level, score, then the lives just below
+    %      HUD top right: best score and the settings icon (gear)
     patch("XData", [0 38 38 0], "YData", [46.5 46.5 60 60], "FaceColor", [0 0.05 0.15], ...
           "FaceAlpha", 0.55, "EdgeColor", "none", "Parent", axes_handle);
     patch("XData", [62 100 100 62], "YData", [54 54 60 60], "FaceColor", [0 0.05 0.15], ...
@@ -871,6 +995,7 @@ function [outcome, final_score] = play_round(figure_handle, axes_handle, level, 
     best_hud = text(64, 57, "", "Parent", axes_handle, "FontUnits", "normalized", ...
                     "FontSize", 0.03, "FontWeight", "bold", "Color", [1 0.9 0.5], ...
                     "VerticalAlignment", "middle");
+    % Settings icon (gear on a small button): click it or press P
     gear_button = patch("XData", [91 98 98 91], "YData", [54.3 54.3 59.7 59.7], "FaceColor", [0.10 0.22 0.38], ...
           "FaceAlpha", 0.9, "EdgeColor", [1 1 1], "LineWidth", 1.5, ...
           "ButtonDownFcn", @(src, evt) setappdata(figure_handle, "last_key", "click_settings"), ...
@@ -879,22 +1004,26 @@ function [outcome, final_score] = play_round(figure_handle, axes_handle, level, 
     gear_icon = draw_gear(axes_handle, 94.5, 57, 2.1, [0.9 0.92 0.95], [0.10 0.22 0.38]);
     set(gear_icon, "HitTest", "off");
 
+    % Red flash over the whole screen when the player is hit (hidden at the start)
     hit_flash = patch("XData", [0 100 100 0], "YData", [0 0 60 60], "FaceColor", [1 0 0], ...
                       "FaceAlpha", 0.30, "EdgeColor", "none", "Visible", "off", ...
                       "Parent", axes_handle);
 
     setappdata(figure_handle, "last_key", "");
-    setappdata(figure_handle, "music_mode", "normal");
+    setappdata(figure_handle, "music_mode", "normal");     % normal music at the start of a level
 
+    % --- Main loop of the level ---
     while strcmp(outcome, "playing")
+        % Stop at once if the window was closed
         if ~ishandle(figure_handle)
             outcome = "quit";
             final_score = score;
             return;
         endif
         frame_count = frame_count + 1;
-        player_hit = false;
+        player_hit = false;                        % set to true by any dangerous contact
 
+        % 1. Read the keyboard (the fish keeps swimming in the chosen direction)
         key = getappdata(figure_handle, "last_key");
         setappdata(figure_handle, "last_key", "");
         open_settings = false;
@@ -921,6 +1050,7 @@ function [outcome, final_score] = play_round(figure_handle, axes_handle, level, 
                 outcome = "quit";
         endswitch
         if open_settings
+            % The game is paused while the settings panel is open
             show_settings(figure_handle, axes_handle);
             if ~ishandle(figure_handle)
                 outcome = "quit";
@@ -930,6 +1060,7 @@ function [outcome, final_score] = play_round(figure_handle, axes_handle, level, 
             setappdata(figure_handle, "last_key", "");
         endif
 
+        % 2. Move the player (bigger fish are a little slower), stay inside the sea
         player_speed = base_speed / (1 + 0.04 * player_size);
         player_x = player_x + velocity(1) * player_speed;
         player_y = player_y + velocity(2) * player_speed;
@@ -942,8 +1073,9 @@ function [outcome, final_score] = play_round(figure_handle, axes_handle, level, 
             invulnerable_frames = invulnerable_frames - 1;
         endif
 
+        % 3. Move enemies, test collisions
         if boss_active
-            current_small_probability = max(small_probability, 0.75);
+            current_small_probability = max(small_probability, 0.75);   % Help the player grow when the boss is active
         else
             current_small_probability = small_probability;
         endif
@@ -951,6 +1083,7 @@ function [outcome, final_score] = play_round(figure_handle, axes_handle, level, 
             enemy_is_big = enemy_size(i) > player_size * size_tolerance;
             enemy_distance = hypot(player_x - enemy_x(i), player_y - enemy_y(i));
             if enemy_is_big && enemy_distance < hunt_radius && invulnerable_frames == 0
+                % Dangerous fish nearby: it turns towards the player and hunts him
                 if abs(player_x - enemy_x(i)) > 1
                     enemy_dir(i) = sign(player_x - enemy_x(i));
                 endif
@@ -962,6 +1095,7 @@ function [outcome, final_score] = play_round(figure_handle, axes_handle, level, 
                 enemy_x(i) = enemy_x(i) + enemy_dir(i) * enemy_speed(i);
                 enemy_y(i) = enemy_y(i) + 0.12 * sin(0.1 * frame_count + i);
             endif
+            % Respawn a fish that left the screen
             left_screen = (enemy_dir(i) == 1  && enemy_x(i) > world_width + 5 * enemy_size(i)) || ...
                           (enemy_dir(i) == -1 && enemy_x(i) < -5 * enemy_size(i));
             if left_screen
@@ -969,9 +1103,11 @@ function [outcome, final_score] = play_round(figure_handle, axes_handle, level, 
                     spawn_enemy(player_size, speed_factor, current_small_probability, allowed_species, ...
                                 world_width, world_height, player_x, player_y, false);
             endif
+            % Check for a collision
             if fish_overlap(player_x, player_y, player_size, enemy_x(i), enemy_y(i), ...
                             enemy_size(i), enemy_species(i))
                 if player_size > enemy_size(i) * size_tolerance
+                    % The player eats the fish and grow
                     points = round(10 * enemy_size(i));
                     play_sfx(figure_handle, "eat");
                     score = score + points;
@@ -986,12 +1122,15 @@ function [outcome, final_score] = play_round(figure_handle, axes_handle, level, 
                 elseif enemy_size(i) > player_size * size_tolerance
                     player_hit = true;
                 else
+                    % Same size: the two fish push each other away
                     player_x = player_x - 2 * sign(enemy_x(i) - player_x);
                 endif
             endif
         endfor
 
+        % 4. Boss: arrival, behaviour and collision
         if ~boss_active && ~boss_defeated && player_size >= boss_trigger
+            % The boss enters from the side opposite to the player
             boss_active = true;
             if player_x < world_width / 2
                 boss_x = world_width + 3 * boss_size;
@@ -1009,7 +1148,7 @@ function [outcome, final_score] = play_round(figure_handle, axes_handle, level, 
             hit_flash_frames = 10;
             set(boss_dark, "Visible", "on");
             play_sfx(figure_handle, "boss");
-            setappdata(figure_handle, "music_mode", "boss");
+            setappdata(figure_handle, "music_mode", "boss");   % boss music
             set([boss_fins, boss_body, boss_stripe, boss_eye], "Visible", "on");
             if boss_species == 6
                 set(boss_glow, "Visible", "on");
@@ -1024,6 +1163,7 @@ function [outcome, final_score] = play_round(figure_handle, axes_handle, level, 
             set(boss_dark, "Visible", "off");
         endif
         if boss_active && ~boss_defeated && ~boss_edible && boss_was_edible
+            % The player is smaller, so the boss is dangerous again
             boss_was_edible = false;
             banner_frames = 100;
             set(banner_text, "String", "THE BOSS IS BACK!", "Color", [1 0.2 0.2]);
@@ -1033,9 +1173,11 @@ function [outcome, final_score] = play_round(figure_handle, axes_handle, level, 
             to_player = [player_x - boss_x, player_y - boss_y];
             distance_to_player = max(norm(to_player), 0.001);
             boss_step = [0 0];
+            % The boss gets angry (20 percent faster) when the player is close to beating it
             boss_rage = player_size >= 0.85 * boss_win_size;
             boss_speed_now = boss_speed * (1 + 0.2 * boss_rage);
             if boss_edible
+                % The boss is smaller than the player: it runs away
                 boss_mode = "flee";
                 away_vector = -to_player / distance_to_player;
                 center_pull = [world_width / 2 - boss_x, world_height / 2 - boss_y];
@@ -1048,8 +1190,10 @@ function [outcome, final_score] = play_round(figure_handle, axes_handle, level, 
                         boss_step = boss_speed_now * to_player / distance_to_player;
                         boss_timer = boss_timer - 1;
                         if boss_timer <= 0
+                            % Lock the direction of the charge and show the warning
                             boss_mode = "telegraph";
                             boss_timer = telegraph_frames;
+                            % The boss aims where the player is going to be, not where he is
                             aim_point = [player_x, player_y] + velocity * player_speed * 0.5 * telegraph_frames;
                             aim_point(1) = min(max(aim_point(1), 0), world_width);
                             aim_point(2) = min(max(aim_point(2), 6), world_height - 8);
@@ -1069,6 +1213,7 @@ function [outcome, final_score] = play_round(figure_handle, axes_handle, level, 
                         boss_timer = boss_timer - 1;
                         if boss_timer <= 0
                             if boss_combo > 0
+                                % Prepare the next attack
                                 boss_combo = boss_combo - 1;
                                 boss_mode = "telegraph";
                                 boss_timer = max(8, round(telegraph_frames / 2));
@@ -1087,8 +1232,10 @@ function [outcome, final_score] = play_round(figure_handle, axes_handle, level, 
             if abs(boss_step(1)) > 0.01
                 boss_dir = sign(boss_step(1));
             endif
+            % Collision with the boss
             if fish_overlap(player_x, player_y, player_size, boss_x, boss_y, boss_size, boss_species)
                 if boss_edible
+                    % The boss is eaten: the level is won
                     boss_defeated = true;
                     score = score + 500 * level;
                     burst_x = boss_x;
@@ -1102,11 +1249,12 @@ function [outcome, final_score] = play_round(figure_handle, axes_handle, level, 
             endif
         endif
 
+        % The player loses a life if touched by a dangerous fish
         if player_hit && invulnerable_frames == 0
             lives = lives - 1;
             play_sfx(figure_handle, "hit");
             invulnerable_frames = 60;
-            player_size = max(start_size, player_size * 0.95);
+            player_size = max(start_size, player_size * 0.95);   % being eaten makes you smaller
             hit_flash_frames = 6;
             shake_frames = max(shake_frames, 8);
             player_x = world_width / 2;
@@ -1114,6 +1262,7 @@ function [outcome, final_score] = play_round(figure_handle, axes_handle, level, 
             velocity = [0 0];
         endif
 
+        % 5. Move bubbles, plants and background fish
         bubble_y = bubble_y + bubble_rise;
         bubble_x = bubble_x + 0.05 * sin(0.2 * frame_count + (1:15));
         bubble_y(bubble_y > world_height) = 0;
@@ -1131,6 +1280,7 @@ function [outcome, final_score] = play_round(figure_handle, axes_handle, level, 
             set(sil_fins(i), "XData", fx, "YData", fy);
         endfor
 
+        % 6. Update the graphics of the player (tail swims faster when moving)
         if any(velocity ~= 0)
             player_wiggle = 0.25 * sin(0.7 * frame_count);
         else
@@ -1142,6 +1292,7 @@ function [outcome, final_score] = play_round(figure_handle, axes_handle, level, 
         set(player_fins, "XData", fx, "YData", fy);
         set(player_stripe, "XData", sx, "YData", sy);
         set(player_eye, "XData", ex, "YData", ey, "MarkerSize", max(5, min(10, 2 + player_size)));
+        % Blink while the player is protected
         if invulnerable_frames > 0 && mod(frame_count, 6) < 3
             visible_state = "off";
         else
@@ -1149,20 +1300,22 @@ function [outcome, final_score] = play_round(figure_handle, axes_handle, level, 
         endif
         set([player_body, player_fins, player_stripe, player_eye], "Visible", visible_state);
 
+        % Update the graphics of the enemies
         for i = 1:enemy_count
             [bx, by, fx, fy, sx, sy, ex, ey] = fish_shape(enemy_x(i), enemy_y(i), enemy_size(i), ...
                 enemy_dir(i), 0.25 * sin(0.5 * frame_count + i), enemy_species(i));
+            % Colour of the fish can be green, yellow or red
             is_edible    = player_size > enemy_size(i) * size_tolerance;
             is_dangerous = enemy_size(i) > player_size * size_tolerance;
             if is_edible
-                fish_color = [0.30 0.80 0.40];
+                fish_color = [0.30 0.80 0.40];             % green: edible
             elseif is_dangerous
-                fish_color = [0.75 0.05 0.08];
+                fish_color = [0.75 0.05 0.08];             % dark red: dangerous
             else
-                fish_color = [0.95 0.90 0.30];
+                fish_color = [0.95 0.90 0.30];             % yellow: same size
             endif
             if is_dangerous
-                body_edge = [1 0.25 0.2];
+                body_edge = [1 0.25 0.2];                  % glowing red outline
                 body_edge_width = 1.8;
             else
                 body_edge = [0.15 0.15 0.15];
@@ -1173,6 +1326,7 @@ function [outcome, final_score] = play_round(figure_handle, axes_handle, level, 
             set(enemy_fins(i), "XData", fx, "YData", fy, "FaceColor", 0.7 * fish_color);
             set(enemy_stripe(i), "XData", sx, "YData", sy, "FaceColor", 0.75 * fish_color);
             if is_dangerous
+                % Scary face: red eye, angry brow and teeth
                 [tx, ty, brx, bry] = fish_menace(enemy_x(i), enemy_y(i), enemy_size(i), ...
                                                  enemy_dir(i), enemy_species(i));
                 set(enemy_teeth(i), "XData", tx, "YData", ty, "Visible", "on");
@@ -1186,12 +1340,14 @@ function [outcome, final_score] = play_round(figure_handle, axes_handle, level, 
             endif
         endfor
 
+        % Update the graphics of the boss
         if boss_active && ~boss_defeated
             if strcmp(boss_mode, "dash")
                 boss_wiggle = 0.35 * sin(1.2 * frame_count);
             else
                 boss_wiggle = 0.20 * sin(0.4 * frame_count);
             endif
+            % The boss trembles with rage just before a charge
             draw_x = boss_x;
             draw_y = boss_y;
             if strcmp(boss_mode, "telegraph")
@@ -1201,6 +1357,7 @@ function [outcome, final_score] = play_round(figure_handle, axes_handle, level, 
             endif
             [bx, by, fx, fy, sx, sy, ex, ey] = fish_shape(draw_x, draw_y, boss_size, boss_dir, ...
                                                           boss_wiggle, boss_species);
+            % Colour: red = dangerous, orange flash = warning, green = edible
             boss_edge = [0.1 0 0];
             if boss_edible
                 boss_color = [0.35 0.90 0.45];
@@ -1217,9 +1374,11 @@ function [outcome, final_score] = play_round(figure_handle, axes_handle, level, 
             set(boss_stripe, "XData", sx, "YData", sy, "FaceColor", 0.75 * boss_color);
             set(boss_eye, "XData", ex, "YData", ey);
             if boss_edible
+                % Scared boss: no fangs, no aura, normal eye
                 set([boss_teeth, boss_brow, boss_aura], "Visible", "off");
                 set(boss_eye, "MarkerFaceColor", [1 1 1], "MarkerSize", 9);
             else
+                % Terrifying boss: pulsing red aura, fangs, angry brow, red eye
                 aura_alpha = 0.16 + 0.10 * sin(0.3 * frame_count);
                 if strcmp(boss_mode, "dash")
                     aura_alpha = 0.45;
@@ -1236,6 +1395,7 @@ function [outcome, final_score] = play_round(figure_handle, axes_handle, level, 
                 set(boss_glow, "XData", boss_x + boss_dir * boss_size * 1.1 * 0.95, ...
                     "YData", boss_y + boss_size * 1.75);
             endif
+            % Warning: red dashed line along the future charge and a "!" above the boss
             if strcmp(boss_mode, "telegraph")
                 set(boss_aim, "XData", [boss_x, boss_x + 70 * dash_vector(1)], ...
                     "YData", [boss_y, boss_y + 70 * dash_vector(2)], "LineWidth", 3, "Visible", "on");
@@ -1248,9 +1408,11 @@ function [outcome, final_score] = play_round(figure_handle, axes_handle, level, 
                  boss_teeth, boss_brow, boss_aura, boss_dark], "Visible", "off");
         endif
 
+        % Update the bubbles
         set(bubble_small, "XData", bubble_x(1:10), "YData", bubble_y(1:10));
         set(bubble_big, "XData", bubble_x(11:15), "YData", bubble_y(11:15));
 
+        % Update the sparkles and the floating points
         if burst_age > 0
             burst_radius = 1 + 0.6 * burst_age;
             set(burst_handle, "XData", burst_x + burst_radius * cos(burst_angles), ...
@@ -1265,6 +1427,7 @@ function [outcome, final_score] = play_round(figure_handle, axes_handle, level, 
             endif
         endif
 
+        % Update the banner, the red flash and the screen shake
         if banner_frames > 0
             banner_frames = banner_frames - 1;
             if banner_frames == 0
@@ -1287,6 +1450,7 @@ function [outcome, final_score] = play_round(figure_handle, axes_handle, level, 
             endif
         endif
 
+        % Update the lives display
         for k = 1:initial_lives
             if k <= lives
                 set([life_body(k), life_fins(k)], "Visible", "on");
@@ -1294,6 +1458,7 @@ function [outcome, final_score] = play_round(figure_handle, axes_handle, level, 
                 set([life_body(k), life_fins(k)], "Visible", "off");
             endif
         endfor
+        % The displayed score counts up towards the real score
         if displayed_score < score
             displayed_score = min(score, displayed_score + max(1, ceil((score - displayed_score) * 0.2)));
         endif
@@ -1303,10 +1468,11 @@ function [outcome, final_score] = play_round(figure_handle, axes_handle, level, 
         drawnow;
         pause(frame_pause);
 
+        % 7. End of the level
         if boss_defeated
             outcome = "win";
             play_sfx(figure_handle, "win");
-            score = score + 100 * lives;
+            score = score + 100 * lives;                   % bonus for remaining lives
         elseif lives <= 0
             outcome = "lose";
             play_sfx(figure_handle, "lose");
@@ -1317,13 +1483,19 @@ function [outcome, final_score] = play_round(figure_handle, axes_handle, level, 
     final_score = score;
 endfunction
 
-best_score_file = "abyss_best_score.txt";
-level_count     = 5;
-level           = 1;
-total_score     = 0;
-best_score      = load_best_score(best_score_file);
-keep_playing    = true;
+%==========================================================================
+% THE MAIN PROGRAM
+%==========================================================================
 
+% Settings of the program
+best_score_file = "abyss_best_score.txt";              % file where the best score is saved
+level_count     = 5;                                   % number of levels
+level           = 1;                                   % current level
+total_score     = 0;                                   % score at the start of the current level
+best_score      = load_best_score(best_score_file);    % best score of previous sessions
+keep_playing    = true;                                % false when the player quits
+
+% Create the game window
 close all;
 figure_handle = figure("Name", "Abyss Feast", "NumberTitle", "off", ...
                        "Color", [0.05 0.2 0.35], "Resize", "on", ...
@@ -1333,18 +1505,20 @@ axes_handle = axes("Parent", figure_handle, "Position", [0 0 1 1], "XLim", [0 10
                    "YLim", [0 60], "XTick", [], "YTick", [], "Color", [0.45 0.75 0.95], ...
                    "Box", "on");
 hold(axes_handle, "on");
-setappdata(figure_handle, "main_axes", axes_handle);
+setappdata(figure_handle, "main_axes", axes_handle);   % used by the mouse clicks
 
+% Start the game and turn on the sound
 setappdata(figure_handle, "sound_on", 1);
 setappdata(figure_handle, "sound_ok", 1);
 
+% The game has background music from .wav files in the same folder.
 script_folder = "";
 try
     script_folder = fileparts(mfilename("fullpath"));
 catch
 end_try_catch
-normal_file = fullfile(script_folder, "abyss_music.wav");
-boss_file   = fullfile(script_folder, "abyss_boss.wav");
+normal_file = fullfile(script_folder, "abyss_music.wav");   % music of the menu and of the game
+boss_file   = fullfile(script_folder, "abyss_boss.wav");    % music when a boss is on the screen
 music_normal = make_music_player(normal_file);
 music_boss   = make_music_player(boss_file);
 setappdata(figure_handle, "music_normal", music_normal);
@@ -1378,19 +1552,22 @@ if ishandle(figure_handle)
     delete(menu_handles(ishandle(menu_handles)));
 endif
 
+% Each level is a new game attempt
 while keep_playing && ishandle(figure_handle)
     [outcome, round_score] = play_round(figure_handle, axes_handle, level, best_score, total_score);
     if ~ishandle(figure_handle)
         break;
     endif
 
+    % Save a new best score
     if round_score > best_score
         best_score = round_score;
         save_best_score(best_score_file, best_score);
     endif
 
+    % End of the level: win, final win, lose or quit screen
     if strcmp(outcome, "win") && level < level_count
-        total_score = round_score;
+        total_score = round_score;                     % the score is kept for the next level
         end_text = {sprintf("Boss defeated! Level %d cleared!", level), "", ...
                     sprintf("Score: %d    Best score: %d", round_score, best_score), "", ...
                     sprintf("R = go to level %d (new decor, harder boss)", level + 1), "ESC = quit"};
@@ -1401,7 +1578,7 @@ while keep_playing && ishandle(figure_handle)
                     sprintf("Final score: %d    Best score: %d", round_score, best_score), "", ...
                     "R = start a new game", "ESC = quit"};
         end_screen = show_screen(axes_handle, "KING OF THE ABYSS!", end_text, [0.45 0.35 0.05]);
-        level = 1;
+        level = 1;                                     % new game
         total_score = 0;
     elseif strcmp(outcome, "lose")
         end_text = {sprintf("You were eaten on level %d!", level), "", ...
@@ -1409,7 +1586,7 @@ while keep_playing && ishandle(figure_handle)
                     "R = retry this level (new random fish)", "ESC = quit"};
         end_screen = show_screen(axes_handle, "GAME OVER", end_text, [0.55 0.15 0.15]);
     else
-        break;
+        break;                                         % the player pressed ESC during the level
     endif
 
     key = wait_for_key(figure_handle, {"r", "escape"});
@@ -1418,6 +1595,7 @@ while keep_playing && ishandle(figure_handle)
     endif
 endwhile
 
+%End of the game: goodbye message, then close the window
 if ishandle(figure_handle)
     draw_sea_background(axes_handle, 1);
     bye_screen = show_screen(axes_handle, "THANKS FOR PLAYING", ...
@@ -1426,7 +1604,7 @@ if ishandle(figure_handle)
     close(figure_handle);
 endif
 try
-    stop(music_normal);
+    stop(music_normal);                            % stop the music at the end
     stop(music_boss);
 catch
 end_try_catch
