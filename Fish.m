@@ -214,7 +214,52 @@ function [teeth_x, teeth_y, brow_x, brow_y] = fish_menace(x, y, fish_size, direc
 endfunction
 
 %--------------------------------------------------------------------------
-% Function: check if the player touches another fish
+% FUNCTION: glossy highlight on the back of a fish (a smaller ellipse
+%   placed in the upper part of the body, drawn semi-transparent)
+%--------------------------------------------------------------------------
+function [shine_x, shine_y] = fish_shine(body_x, body_y, x, y)
+    shine_x = x + 0.55 * (body_x - x);
+    shine_y = y + 0.42 * (max(body_y) - y) + 0.34 * (body_y - y);
+endfunction
+
+%--------------------------------------------------------------------------
+% FUNCTION: draw a starfish (decor, does not move)
+%--------------------------------------------------------------------------
+function draw_starfish(axes_handle, center_x, center_y, radius, star_color)
+    star_angle  = linspace(0, 2*pi, 11);
+    star_angle  = star_angle(1:10) + pi / 2;
+    star_radius = radius * [1 0.45 1 0.45 1 0.45 1 0.45 1 0.45];
+    patch("XData", center_x + star_radius .* cos(star_angle), ...
+          "YData", center_y + star_radius .* sin(star_angle), ...
+          "FaceColor", star_color, "EdgeColor", 0.55 * star_color, "LineWidth", 1, ...
+          "Parent", axes_handle);
+    line("XData", center_x, "YData", center_y, "LineStyle", "none", "Marker", "o", ...
+         "MarkerSize", 3, "MarkerFaceColor", min(1.2 * star_color, 1), ...
+         "Color", 0.55 * star_color, "Parent", axes_handle);
+endfunction
+
+%--------------------------------------------------------------------------
+% FUNCTION: draw a glowing jellyfish (decor of the deepest level)
+%--------------------------------------------------------------------------
+function draw_jellyfish(axes_handle, center_x, center_y, radius, jelly_color)
+    dome_angle = linspace(0, pi, 24);
+    for t = -3:3
+        tentacle_x = center_x + 0.30 * radius * t + 0.25 * radius * sin(t + [0 1.5 3 4.5 6]);
+        tentacle_y = center_y - radius * [0 0.5 1.0 1.5 2.0];
+        line("XData", tentacle_x, "YData", tentacle_y, "Color", jelly_color, ...
+             "LineWidth", 1.5, "Parent", axes_handle);
+    endfor
+    patch("XData", center_x + radius * cos(dome_angle), ...
+          "YData", center_y + 0.8 * radius * sin(dome_angle), ...
+          "FaceColor", jelly_color, "FaceAlpha", 0.55, ...
+          "EdgeColor", min(1.3 * jelly_color, 1), "LineWidth", 1.5, "Parent", axes_handle);
+    patch("XData", center_x + 0.6 * radius * cos(dome_angle), ...
+          "YData", center_y + 0.1 * radius + 0.5 * radius * sin(dome_angle), ...
+          "FaceColor", [1 1 1], "FaceAlpha", 0.25, "EdgeColor", "none", "Parent", axes_handle);
+endfunction
+
+%--------------------------------------------------------------------------
+% FUNCTION: test if the player overlaps another fish (ellipse approximation)
 %--------------------------------------------------------------------------
 function hit = fish_overlap(player_x, player_y, player_size, fish_x, fish_y, fish_size, fish_species)
     species_table = get_species_table();
@@ -298,14 +343,39 @@ function save_best_score(file_name, best_score)
 endfunction
 
 %--------------------------------------------------------------------------
+% Function: shape of a small crab walking on the sea floor (decor)
+%   Inputs : position (x, y), size of the crab and a phase (the phase moves
+%            the claws and the legs, so the crab looks alive)
+%   Outputs: the shell (body), the two claws and the legs as coordinates
+%            (a NaN cuts a line in several pieces, so one line draws many legs)
+%--------------------------------------------------------------------------
+function [body_x, body_y, claw_x, claw_y, leg_x, leg_y] = crab_shape(x, y, crab_size, phase)
+    dome_angle = linspace(0, pi, 16);
+    body_x = x + 1.2 * crab_size * cos(dome_angle);
+    body_y = y + 0.8 * crab_size * sin(dome_angle);
+    snap = 0.25 * sin(phase);                      % the claws open and close
+    % Two raised arms (NaN separates the two lines)
+    claw_x = x + crab_size * [-1.1 -1.5 -1.7 NaN 1.1 1.5 1.7];
+    claw_y = y + crab_size * [0.5 1.0 + snap 1.5 + snap NaN 0.5 1.0 + snap 1.5 + snap];
+    % Four little legs
+    leg_wiggle = 0.15 * sin(2 * phase);
+    leg_x = x + crab_size * [-1.0 -1.5 NaN -0.7 -1.1 NaN 0.7 1.1 NaN 1.0 1.5];
+    leg_y = y + crab_size * [0.1 -0.4 + leg_wiggle NaN 0 -0.5 - leg_wiggle NaN 0 -0.5 + leg_wiggle NaN 0.1 -0.4 - leg_wiggle];
+endfunction
+
+%--------------------------------------------------------------------------
 % Function: animate the seaweed
 %--------------------------------------------------------------------------
 function update_seaweed(seaweed_handles, seaweed_base_x, seaweed_top_y, frame_count)
+    % The first half of the handles are the dark outlines, the second half
+    % the coloured plants: both halves use the same shape and the same phase
+    plant_count = numel(seaweed_handles) / 2;
     for k = 1:numel(seaweed_handles)
+        phase_index = mod(k - 1, plant_count) + 1;
         seaweed_y = linspace(3.5, seaweed_top_y(k), 20);
         height_ratio = (seaweed_y - 3.5) / (seaweed_top_y(k) - 3.5);
         seaweed_x = seaweed_base_x(k) + 2.0 * height_ratio ...
-                    .* sin(0.12 * frame_count + 3 * height_ratio + k);
+                    .* sin(0.12 * frame_count + 3 * height_ratio + phase_index);
         set(seaweed_handles(k), "XData", seaweed_x, "YData", seaweed_y);
     endfor
 endfunction
@@ -355,8 +425,8 @@ function [seaweed_handles, seaweed_base_x, seaweed_top_y, theme] = draw_sea_back
             theme.sil_color = [0.05 0.12 0.22];  theme.bubble_color = [0.5 0.9 1];
     endswitch
 
-    % Draw the water background
-    band_count = 24;
+    % Water: vertical gradient made of horizontal bands
+    band_count = 48;
     for band = 1:band_count
         mix = (band - 1) / (band_count - 1);
         band_color = deep_color + mix * (surface_color - deep_color);
@@ -368,17 +438,41 @@ function [seaweed_handles, seaweed_base_x, seaweed_top_y, theme] = draw_sea_back
 
     % Light rays coming from the surface
     if ray_alpha > 0
-        ray_start_x = [12 38 64 86];
+        ray_start_x = [12 38 64 86 25 52 76];
+        ray_weight  = [1 1 1 1 0.6 0.6 0.6];
         for k = 1:numel(ray_start_x)
             patch("XData", [ray_start_x(k) ray_start_x(k)+8 ray_start_x(k)+23 ray_start_x(k)+12], ...
-                  "YData", [60 60 5 5], "FaceColor", [1 1 1], "FaceAlpha", ray_alpha, ...
+                  "YData", [60 60 5 5], "FaceColor", [1 1 1], "FaceAlpha", ray_alpha * ray_weight(k), ...
                   "EdgeColor", "none", "Parent", axes_handle);
         endfor
+        % Soft glow just under the surface
+        patch("XData", [0 100 100 0], "YData", [46 46 60 60], "FaceColor", [1 1 1], ...
+              "FaceAlpha", 0.06, "EdgeColor", "none", "Parent", axes_handle);
+        patch("XData", [0 100 100 0], "YData", [53 53 60 60], "FaceColor", [1 1 1], ...
+              "FaceAlpha", 0.08, "EdgeColor", "none", "Parent", axes_handle);
     endif
+
+    % Far away sea floor hills (darker than the water: they give depth)
+    far_x  = linspace(0, 100, 60);
+    far_y1 = 11 + 4 * sin(far_x / 9 + 1) + 2 * sin(far_x / 4);
+    far_y2 = 7.5 + 3 * sin(far_x / 6 + 4) + 1.5 * sin(far_x / 3 + 2);
+    patch("XData", [far_x 100 0], "YData", [far_y1 0 0], "FaceColor", 0.55 * deep_color + 0.03, ...
+          "FaceAlpha", 0.60, "EdgeColor", "none", "Parent", axes_handle);
+    patch("XData", [far_x 100 0], "YData", [far_y2 0 0], "FaceColor", 0.35 * deep_color + 0.02, ...
+          "FaceAlpha", 0.70, "EdgeColor", "none", "Parent", axes_handle);
 
     % Special decor of each level
     switch level
-        case 3      % Shipwreck
+        case 2      % Kelp Forest: dark kelp far away (static), for depth
+            far_kelp_x = [9 19 29 41 52 63 75 88 97];
+            far_kelp_h = [26 33 22 35 28 31 24 30 27];
+            for k = 1:numel(far_kelp_x)
+                far_kelp_y = linspace(4, far_kelp_h(k), 16);
+                far_kelp_line_x = far_kelp_x(k) + 1.5 * sin(far_kelp_y / 5 + k);
+                line("XData", far_kelp_line_x, "YData", far_kelp_y, "Color", [0.06 0.26 0.18], ...
+                     "LineWidth", 8, "Parent", axes_handle);
+            endfor
+        case 3      % Shipwreck: hull, cabin, mast, torn sail and portholes
             patch("XData", [44 52 90 98], "YData", [13 4 4 13], "FaceColor", [0.22 0.14 0.10], ...
                   "EdgeColor", [0.10 0.07 0.05], "LineWidth", 2, "Parent", axes_handle);
             patch("XData", [60 60 80 80], "YData", [13 20 20 13], "FaceColor", [0.28 0.18 0.12], ...
@@ -390,7 +484,21 @@ function [seaweed_handles, seaweed_base_x, seaweed_top_y, theme] = draw_sea_back
             line("XData", [52 60 86], "YData", [9 9 9], "LineStyle", "none", "Marker", "o", ...
                  "MarkerSize", 6, "MarkerFaceColor", [0.95 0.80 0.35], "Color", [0.1 0.07 0.05], ...
                  "Parent", axes_handle);
-        case 4      % Volcano with lava
+            % Wooden planks, ropes, flag and moss on the wreck
+            line("XData", [46.5 95.5], "YData", [10.5 10.5], "Color", [0.12 0.08 0.06], ...
+                 "LineWidth", 1, "Parent", axes_handle);
+            line("XData", [49.5 92.5], "YData", [7 7], "Color", [0.12 0.08 0.06], ...
+                 "LineWidth", 1, "Parent", axes_handle);
+            line("XData", [70 60], "YData", [38 20], "Color", [0.35 0.25 0.18], ...
+                 "LineWidth", 1, "Parent", axes_handle);
+            line("XData", [70 80], "YData", [38 20], "Color", [0.35 0.25 0.18], ...
+                 "LineWidth", 1, "Parent", axes_handle);
+            patch("XData", [70 70 77 74], "YData", [38 41.5 40 38.8], "FaceColor", [0.10 0.10 0.12], ...
+                  "EdgeColor", [0.3 0.3 0.3], "Parent", axes_handle);
+            line("XData", [44.5 49 55 62 70 78 86 93 97], "YData", [12.6 12.9 12.5 13.0 12.6 12.9 12.5 12.8 12.6], ...
+                 "LineStyle", "none", "Marker", "o", "MarkerSize", 4, "MarkerFaceColor", [0.15 0.45 0.30], ...
+                 "Color", [0.10 0.30 0.20], "Parent", axes_handle);
+        case 4      % Volcano with lava, and a red glow at the bottom
             patch("XData", [0 100 100 0], "YData", [0 0 16 16], "FaceColor", [1 0.4 0.05], ...
                   "FaceAlpha", 0.18, "EdgeColor", "none", "Parent", axes_handle);
             patch("XData", [58 76 80 84 102], "YData", [3 23 21 23 3], "FaceColor", [0.18 0.09 0.08], ...
@@ -401,13 +509,24 @@ function [seaweed_handles, seaweed_base_x, seaweed_top_y, theme] = draw_sea_back
                  "LineWidth", 3, "Parent", axes_handle);
             line("XData", [81 84 90], "YData", [21 13 5], "Color", [1 0.45 0.05], ...
                  "LineWidth", 3, "Parent", axes_handle);
-        case 5      % Bioluminescent lights
+            % Glow around the crater and floating embers
+            glow_angle = linspace(0, 2*pi, 30);
+            patch("XData", 80 + 10 * cos(glow_angle), "YData", 24 + 7 * sin(glow_angle), ...
+                  "FaceColor", [1 0.5 0.1], "FaceAlpha", 0.12, "EdgeColor", "none", ...
+                  "Parent", axes_handle);
+            line("XData", 100 * rand(1, 40), "YData", 6 + 44 * rand(1, 40), "LineStyle", "none", ...
+                 "Marker", ".", "MarkerSize", 8, "Color", [1 0.6 0.15], "Parent", axes_handle);
+        case 5      % Bioluminescent dots (small cyan and big purple lights)
             line("XData", 100 * rand(1, 30), "YData", 8 + 46 * rand(1, 30), "LineStyle", "none", ...
                  "Marker", "o", "MarkerSize", 2, "MarkerFaceColor", [0.4 0.9 1], ...
                  "Color", [0.4 0.9 1], "Parent", axes_handle);
             line("XData", 100 * rand(1, 8), "YData", 8 + 46 * rand(1, 8), "LineStyle", "none", ...
                  "Marker", "o", "MarkerSize", 6, "MarkerFaceColor", [0.8 0.3 1], ...
                  "Color", [0.8 0.3 1], "Parent", axes_handle);
+            % Three glowing jellyfish
+            draw_jellyfish(axes_handle, 20, 40, 3.5, [0.75 0.35 1.0]);
+            draw_jellyfish(axes_handle, 55, 47, 4.0, [0.30 0.90 1.0]);
+            draw_jellyfish(axes_handle, 85, 36, 3.0, [1.0 0.45 0.80]);
     endswitch
 
     % Draw the sand at the bottom
@@ -415,6 +534,23 @@ function [seaweed_handles, seaweed_base_x, seaweed_top_y, theme] = draw_sea_back
     dune_y = 3.5 + 1.2 * sin(dune_x / 7) + 0.6 * sin(dune_x / 3);
     patch("XData", [dune_x 100 0], "YData", [dune_y 0 0], "FaceColor", sand_color, ...
           "EdgeColor", sand_edge, "Parent", axes_handle);
+    % Darker sand below, ripples and pebbles
+    patch("XData", [dune_x 100 0], "YData", [0.55 * dune_y 0 0], "FaceColor", 0.8 * sand_color, ...
+          "FaceAlpha", 0.7, "EdgeColor", "none", "Parent", axes_handle);
+    line("XData", dune_x, "YData", dune_y - 0.9 + 0.25 * sin(dune_x / 2), "Color", sand_edge, ...
+         "LineWidth", 0.5, "Parent", axes_handle);
+    line("XData", 100 * rand(1, 24), "YData", 0.8 + 1.4 * rand(1, 24), "LineStyle", "none", ...
+         "Marker", "o", "MarkerSize", 2, "MarkerFaceColor", sand_edge, "Color", sand_edge, ...
+         "Parent", axes_handle);
+    if level == 4
+        % Glowing cracks in the ground
+        line("XData", [6 12 17 24], "YData", [2.2 1.4 2.0 1.2], "Color", [1 0.5 0.1], ...
+             "LineWidth", 2, "Parent", axes_handle);
+        line("XData", [40 46 52], "YData", [1.8 1.0 1.9], "Color", [1 0.5 0.1], ...
+             "LineWidth", 2, "Parent", axes_handle);
+        line("XData", [90 95 99], "YData", [1.5 2.2 1.3], "Color", [1 0.5 0.1], ...
+             "LineWidth", 2, "Parent", axes_handle);
+    endif
 
     % Draw the rocks
     rock_angle = linspace(0, pi, 20);
@@ -426,6 +562,37 @@ function [seaweed_handles, seaweed_base_x, seaweed_top_y, theme] = draw_sea_back
               "YData", 3 + rock_heights(k) * sin(rock_angle), "FaceColor", rock_color, ...
               "EdgeColor", 0.5 * rock_color, "Parent", axes_handle);
     endfor
+    % Light spot on each rock
+    for k = 1:numel(rock_centers)
+        patch("XData", rock_centers(k) - 0.15 * rock_widths(k) + 0.55 * rock_widths(k) * cos(rock_angle), ...
+              "YData", 3 + 0.25 * rock_heights(k) + 0.55 * rock_heights(k) * sin(rock_angle), ...
+              "FaceColor", min(1.35 * rock_color + 0.04, 1), "FaceAlpha", 0.55, ...
+              "EdgeColor", "none", "Parent", axes_handle);
+    endfor
+
+    % Treasure chest on the sand of the Sunken Ship level (decor): a wooden box,
+    % a round lid, a golden band with a lock, some coins on the sand and a
+    % soft golden light around it
+    if level == 3
+        chest_x = 10;
+        chest_y = 3.8;
+        lid_angle = linspace(0, pi, 20);
+        patch("XData", chest_x + 5 * cos(lid_angle), "YData", chest_y + 3.5 + 3 * sin(lid_angle), ...
+              "FaceColor", [1 0.85 0.3], "FaceAlpha", 0.10, "EdgeColor", "none", "Parent", axes_handle);
+        patch("XData", [chest_x - 3, chest_x + 3, chest_x + 3, chest_x - 3], ...
+              "YData", [chest_y, chest_y, chest_y + 3, chest_y + 3], "FaceColor", [0.40 0.24 0.10], ...
+              "EdgeColor", [0.15 0.08 0.03], "LineWidth", 1.5, "Parent", axes_handle);
+        patch("XData", chest_x + 3 * cos(lid_angle), "YData", chest_y + 3 + 1.6 * sin(lid_angle), ...
+              "FaceColor", [0.50 0.30 0.12], "EdgeColor", [0.15 0.08 0.03], "LineWidth", 1.5, ...
+              "Parent", axes_handle);
+        line("XData", [chest_x chest_x], "YData", [chest_y chest_y + 4.6], "Color", [0.90 0.75 0.25], ...
+             "LineWidth", 2, "Parent", axes_handle);
+        line("XData", chest_x, "YData", chest_y + 2.6, "LineStyle", "none", "Marker", "s", ...
+             "MarkerSize", 4, "MarkerFaceColor", [1 0.9 0.4], "Color", [0.4 0.3 0.1], "Parent", axes_handle);
+        line("XData", chest_x + [3.8 4.8 -3.9], "YData", chest_y + [0.2 0.1 0.2], "LineStyle", "none", ...
+             "Marker", "o", "MarkerSize", 4, "MarkerFaceColor", [1 0.85 0.2], "Color", [0.6 0.45 0.1], ...
+             "Parent", axes_handle);
+    endif
 
     % Add coral in the Sunny Reef
     if level == 1
@@ -437,15 +604,40 @@ function [seaweed_handles, seaweed_base_x, seaweed_top_y, theme] = draw_sea_back
              "LineWidth", 4, "Parent", axes_handle);
     endif
 
-    % Add the plants
-    seaweed_handles = zeros(1, numel(seaweed_base_x));
-    for k = 1:numel(seaweed_base_x)
-        plant_shade = min(plant_color * (0.8 + 0.1 * mod(k, 3)), 1);
+    % More decor of the Sunny Reef: starfish and two round corals
+    if level == 1
+        draw_starfish(axes_handle, 28, 3.2, 1.8, [1.00 0.45 0.35]);
+        draw_starfish(axes_handle, 62, 2.6, 1.5, [1.00 0.75 0.20]);
+        draw_starfish(axes_handle, 84, 3.0, 1.3, [0.95 0.40 0.60]);
+        coral_angle = linspace(0, pi, 20);
+        patch("XData", 8 + 3.2 * cos(coral_angle), "YData", 3.4 + 2.4 * sin(coral_angle), ...
+              "FaceColor", [0.90 0.45 0.65], "EdgeColor", [0.60 0.25 0.40], "LineWidth", 1.5, ...
+              "Parent", axes_handle);
+        patch("XData", 88 + 2.6 * cos(coral_angle), "YData", 3.2 + 2.0 * sin(coral_angle), ...
+              "FaceColor", [0.55 0.45 0.85], "EdgeColor", [0.35 0.25 0.60], "LineWidth", 1.5, ...
+              "Parent", axes_handle);
+    endif
+
+    % Plants (animated later by update_seaweed): a dark outline line under
+    % each plant (first half of the handles), then the coloured plant (second half)
+    plant_count = numel(seaweed_base_x);
+    seaweed_handles = zeros(1, 2 * plant_count);
+    for k = 1:plant_count
         seaweed_handles(k) = line("XData", seaweed_base_x(k) * ones(1, 20), ...
                                   "YData", linspace(3.5, seaweed_top_y(k), 20), ...
-                                  "Color", plant_shade, "LineWidth", 3 + (level == 2), ...
+                                  "Color", 0.45 * plant_color, "LineWidth", 6.5 + (level == 2), ...
                                   "Parent", axes_handle);
     endfor
+    for k = 1:plant_count
+        plant_shade = min(plant_color * (0.8 + 0.1 * mod(k, 3)) + 0.08, 1);
+        seaweed_handles(plant_count + k) = line("XData", seaweed_base_x(k) * ones(1, 20), ...
+                                  "YData", linspace(3.5, seaweed_top_y(k), 20), ...
+                                  "Color", plant_shade, "LineWidth", 3.5 + (level == 2), ...
+                                  "Parent", axes_handle);
+    endfor
+    % Both halves share the same positions (update_seaweed uses these lists)
+    seaweed_base_x = [seaweed_base_x seaweed_base_x];
+    seaweed_top_y  = [seaweed_top_y seaweed_top_y];
     update_seaweed(seaweed_handles, seaweed_base_x, seaweed_top_y, 0);
 endfunction
 
@@ -453,23 +645,27 @@ endfunction
 % Function: show a message screen (title, rules, win, game over)
 %--------------------------------------------------------------------------
 function screen_handles = show_screen(axes_handle, title_text, text_lines, panel_color)
-    % Draw the shadow, panel and text
-    shadow = patch("XData", [12 92 92 12], "YData", [4 4 52 52], "FaceColor", [0 0 0], ...
+    % Shadow, panel, darker header, golden inner border, title (with shadow) and message
+    shadow = patch("XData", [9.5 93.5 93.5 9.5], "YData", [3.5 3.5 53.5 53.5], "FaceColor", [0 0 0], ...
+                   "FaceAlpha", 0.6, "EdgeColor", "none", "Parent", axes_handle);
+    panel = patch("XData", [8 92 92 8], "YData", [5 5 55 55], "FaceColor", panel_color, ...
+                  "EdgeColor", [1 1 1], "LineWidth", 3, "Parent", axes_handle);
+    header = patch("XData", [8 92 92 8], "YData", [42 42 55 55], "FaceColor", 0.6 * panel_color, ...
                    "EdgeColor", "none", "Parent", axes_handle);
-    panel = patch("XData", [10 90 90 10], "YData", [6 6 54 54], "FaceColor", panel_color, ...
-                  "EdgeColor", [1 1 1], "LineWidth", 2, "Parent", axes_handle);
-    title_shadow = text(50.4, 46.6, title_text, "HorizontalAlignment", "center", ...
+    border = line("XData", [9.5 90.5 90.5 9.5 9.5], "YData", [6.5 6.5 53.5 53.5 6.5], ...
+                  "Color", [1 0.85 0.3], "LineWidth", 1.5, "Parent", axes_handle);
+    title_shadow = text(50.4, 47.9, title_text, "HorizontalAlignment", "center", ...
                         "VerticalAlignment", "middle", "FontUnits", "normalized", ...
-                        "FontSize", 0.07, "FontWeight", "bold", "Color", [0 0 0], ...
+                        "FontSize", 0.085, "FontWeight", "bold", "Color", [0 0 0], ...
                         "Parent", axes_handle);
-    title_main = text(50, 47, title_text, "HorizontalAlignment", "center", ...
+    title_main = text(50, 48.5, title_text, "HorizontalAlignment", "center", ...
                       "VerticalAlignment", "middle", "FontUnits", "normalized", ...
-                      "FontSize", 0.07, "FontWeight", "bold", "Color", [1 0.85 0.2], ...
+                      "FontSize", 0.085, "FontWeight", "bold", "Color", [1 0.85 0.2], ...
                       "Parent", axes_handle);
-    message = text(50, 26, text_lines, "HorizontalAlignment", "center", ...
+    message = text(50, 24, text_lines, "HorizontalAlignment", "center", ...
                    "VerticalAlignment", "middle", "FontUnits", "normalized", ...
-                   "FontSize", 0.032, "Color", [1 1 1], "Parent", axes_handle);
-    screen_handles = [shadow, panel, title_shadow, title_main, message];
+                   "FontSize", 0.04, "Color", [1 1 1], "Parent", axes_handle);
+    screen_handles = [shadow, panel, header, border, title_shadow, title_main, message];
 endfunction
 
 %--------------------------------------------------------------------------
@@ -583,7 +779,35 @@ function play_sfx(figure_handle, kind)
             for k = 1:numel(notes)
                 wave = [wave, 0.35 * sin(2*pi*notes(k)*t) .* (1 - 0.6 * t / 0.15)];
             endfor
-        case "click" % Sound when a button is clicked
+        case "power"        % quick rising arpeggio (special fish eaten)
+            notes = [659 880 1175 1568];
+            wave = [];
+            t = (0:round(0.07 * fs)) / fs;
+            for k = 1:numel(notes)
+                wave = [wave, 0.35 * sin(2*pi*notes(k)*t) .* (1 - 0.5 * t / 0.07)];
+            endfor
+        case "pearl"        % two bright notes (golden pearl collected)
+            notes = [1319 1760];
+            wave = [];
+            t = (0:round(0.06 * fs)) / fs;
+            for k = 1:numel(notes)
+                wave = [wave, 0.30 * sin(2*pi*notes(k)*t) .* (1 - 0.5 * t / 0.06)];
+            endfor
+        case "heart"        % three soft rising notes (a life is given back)
+            notes = [523 784 1047];
+            wave = [];
+            t = (0:round(0.08 * fs)) / fs;
+            for k = 1:numel(notes)
+                wave = [wave, 0.30 * sin(2*pi*notes(k)*t) .* (1 - 0.4 * t / 0.08)];
+            endfor
+        case "shield"       % two notes going up (a shield is collected)
+            notes = [784 1175];
+            wave = [];
+            t = (0:round(0.07 * fs)) / fs;
+            for k = 1:numel(notes)
+                wave = [wave, 0.30 * sin(2*pi*notes(k)*t) .* (1 - 0.4 * t / 0.07)];
+            endfor
+        case "click"
             t = (0:round(0.04 * fs)) / fs;
             wave = 0.30 * sin(2*pi*900*t) .* (1 - t / 0.04);
         otherwise
@@ -607,23 +831,33 @@ function button_handles = make_button(figure_handle, axes_handle, center_x, cent
     right  = center_x + button_width / 2;
     bottom = center_y - button_height / 2;
     top    = center_y + button_height / 2;
-    shadow = patch("XData", [left right right left] + 0.6, "YData", [bottom bottom top top] - 0.9, ...
-                   "FaceColor", [0 0 0], "FaceAlpha", 0.45, "EdgeColor", "none", ...
+    shadow = patch("XData", [left right right left] + 0.8, "YData", [bottom bottom top top] - 1.1, ...
+                   "FaceColor", [0 0 0], "FaceAlpha", 0.5, "EdgeColor", "none", ...
                    "HitTest", "off", "Parent", axes_handle);
     body   = patch("XData", [left right right left], "YData", [bottom bottom top top], ...
-                   "FaceColor", base_color, "EdgeColor", [1 1 1], "LineWidth", 2.5, ...
+                   "FaceColor", base_color, "EdgeColor", [1 1 1], "LineWidth", 3, ...
                    "ButtonDownFcn", @(src, evt) setappdata(figure_handle, "last_key", click_key), ...
                    "Parent", axes_handle);
-    shine  = patch("XData", [left + 0.6, right - 0.6, right - 0.6, left + 0.6], ...
-                   "YData", [center_y + 0.2, center_y + 0.2, top - 0.5, top - 0.5], ...
-                   "FaceColor", [1 1 1], "FaceAlpha", 0.18, "EdgeColor", "none", ...
+    % Darker lower part and light upper part give a relief to the button
+    base_strip = patch("XData", [left right right left], ...
+                       "YData", [bottom bottom bottom + 0.30 * button_height bottom + 0.30 * button_height], ...
+                       "FaceColor", [0 0 0], "FaceAlpha", 0.20, "EdgeColor", "none", ...
+                       "HitTest", "off", "Parent", axes_handle);
+    shine  = patch("XData", [left + 0.8, right - 0.8, right - 0.8, left + 0.8], ...
+                   "YData", [center_y + 0.3, center_y + 0.3, top - 0.6, top - 0.6], ...
+                   "FaceColor", [1 1 1], "FaceAlpha", 0.22, "EdgeColor", "none", ...
                    "HitTest", "off", "Parent", axes_handle);
+    label_shadow = text(center_x + 0.35, center_y - 0.55, label, "HorizontalAlignment", "center", ...
+                        "VerticalAlignment", "middle", "FontUnits", "normalized", ...
+                        "FontSize", font_size, "FontWeight", "bold", "Color", [0 0 0], ...
+                        "HitTest", "off", "Parent", axes_handle);
     label_handle = text(center_x, center_y, label, "HorizontalAlignment", "center", ...
                         "VerticalAlignment", "middle", "FontUnits", "normalized", ...
                         "FontSize", font_size, "FontWeight", "bold", "Color", [1 1 1], ...
                         "HitTest", "off", "Parent", axes_handle);
     register_zone(figure_handle, left, right, bottom, top, click_key, body);
-    button_handles = [shadow, body, shine, label_handle];
+    % Order: [shadow, body, shine, label, lower strip, label shadow]
+    button_handles = [shadow, body, shine, label_handle, base_strip, label_shadow];
 endfunction
 
 %--------------------------------------------------------------------------
@@ -633,20 +867,26 @@ function menu_handles = draw_title_menu(figure_handle, axes_handle)
     menu_handles = [];
     x_ratio = x_scale_ratio(axes_handle);
 
-    % Draw the dark background, bubbles and fish
-    menu_handles(end + 1) = patch("XData", [0 100 100 0], "YData", [38.5 38.5 60 60], ...
-                                  "FaceColor", [0 0.05 0.15], "FaceAlpha", 0.35, "EdgeColor", "none", ...
+    % Dark band behind the title (with a golden line under it) and bubbles
+    menu_handles(end + 1) = patch("XData", [0 100 100 0], "YData", [35.5 35.5 60 60], ...
+                                  "FaceColor", [0 0.05 0.15], "FaceAlpha", 0.45, "EdgeColor", "none", ...
                                   "HitTest", "off", "Parent", axes_handle);
+    menu_handles(end + 1) = line("XData", [0 100], "YData", [35.5 35.5], "Color", [1 0.8 0.25], ...
+                                 "LineWidth", 2.5, "HitTest", "off", "Parent", axes_handle);
     menu_handles(end + 1) = line("XData", 100 * rand(1, 14), "YData", 4 + 52 * rand(1, 14), ...
                                  "LineStyle", "none", "Marker", "o", "MarkerSize", 5, ...
                                  "Color", [1 1 1], "HitTest", "off", "Parent", axes_handle);
-    shark_handles = draw_static_fish(axes_handle, 15, 22.5, 4.2, 1, 5, [0.75 0.05 0.08], true);
-    fish_handles  = draw_static_fish(axes_handle, 85, 22.5, 3.0, 1, 1, [1 0.65 0.1], false);
-    menu_handles = [menu_handles, shark_handles, fish_handles];
 
-    % Draw the game title
+    % A shark chasing a small fish (beside PLAY), and two small fish below
+    shark_handles = draw_static_fish(axes_handle, 13, 27.8, 4.2, 1, 5, [0.75 0.05 0.08], true);
+    fish_handles  = draw_static_fish(axes_handle, 87, 27.8, 3.0, 1, 1, [1 0.65 0.1], false);
+    small_one     = draw_static_fish(axes_handle, 11, 13.5, 1.8, -1, 2, [0.30 0.80 0.40], false);
+    small_two     = draw_static_fish(axes_handle, 89, 13.5, 2.0, 1, 1, [0.95 0.90 0.30], false);
+    menu_handles = [menu_handles, shark_handles, fish_handles, small_one, small_two];
+
+    % Big title in capital letters, two lines = the top of the page
     title_lines  = {"A B Y S S", "F E A S T"};
-    title_y      = [53.8, 45.4];
+    title_y      = [53.0, 44.4];
     title_colors = {[0.75 0.95 1.0], [1.0 0.75 0.15]};
     for k = 1:2
         % Add the shadow and outline
@@ -665,28 +905,50 @@ function menu_handles = draw_title_menu(figure_handle, axes_handle)
             "FontUnits", "normalized", "FontSize", 0.17, "FontWeight", "bold", ...
             "Color", title_colors{k}, "HitTest", "off", "Parent", axes_handle);
     endfor
-    menu_handles(end + 1) = text(50, 36.8, "EAT  OR  BE  EATEN", "HorizontalAlignment", "center", ...
-        "VerticalAlignment", "middle", "FontUnits", "normalized", "FontSize", 0.036, ...
-        "FontWeight", "bold", "Color", [0.8 0.95 1], "HitTest", "off", "Parent", axes_handle);
+    menu_handles(end + 1) = text(50.3, 37.7, "EAT  OR  BE  EATEN", "HorizontalAlignment", "center", ...
+        "VerticalAlignment", "middle", "FontUnits", "normalized", "FontSize", 0.055, ...
+        "FontWeight", "bold", "Color", [0 0.03 0.1], "HitTest", "off", "Parent", axes_handle);
+    menu_handles(end + 1) = text(50, 38.2, "EAT  OR  BE  EATEN", "HorizontalAlignment", "center", ...
+        "VerticalAlignment", "middle", "FontUnits", "normalized", "FontSize", 0.055, ...
+        "FontWeight", "bold", "Color", [0.85 0.97 1], "HitTest", "off", "Parent", axes_handle);
 
-    % Create the PLAY and SETTINGS buttons
-    play_button = make_button(figure_handle, axes_handle, 50, 28.5, 40, 8.5, "PLAY", ...
-                              [0.12 0.60 0.30], "click_play", 0.07);
-    triangle = patch("XData", 37 + x_ratio * [-1.6 -1.6 1.8], "YData", 28.5 + [-2.2 2.2 0], ...
+    % Big PLAY button (with a play triangle), then a big SETTINGS button (with a gear)
+    play_button = make_button(figure_handle, axes_handle, 50, 27.8, 58, 11.5, "PLAY", ...
+                              [0.12 0.60 0.30], "click_play", 0.09);
+    triangle = patch("XData", 29 + x_ratio * [-1.8 -1.8 2.0], "YData", 27.8 + [-2.6 2.6 0], ...
                      "FaceColor", [1 1 1], "EdgeColor", "none", "HitTest", "off", "Parent", axes_handle);
-    settings_button = make_button(figure_handle, axes_handle, 50, 17.5, 40, 8.5, "SETTINGS", ...
-                                  [0.15 0.40 0.70], "click_settings", 0.055);
-    gear_handles = draw_gear(axes_handle, 36.5, 17.5, 2.6, [1 1 1], [0.15 0.40 0.70]);
+    settings_button = make_button(figure_handle, axes_handle, 50, 14.3, 58, 9.5, "SETTINGS", ...
+                                  [0.15 0.40 0.70], "click_settings", 0.068);
+    gear_handles = draw_gear(axes_handle, 29, 14.3, 3.0, [1 1 1], [0.15 0.40 0.70]);
     set(gear_handles, "HitTest", "off");
     menu_handles = [menu_handles, play_button, triangle, settings_button, gear_handles];
 
-    % Show the keyboard controls
-    menu_handles(end + 1) = patch("XData", [0 100 100 0], "YData", [4 4 10 10], "FaceColor", [0 0.05 0.15], ...
-                                  "FaceAlpha", 0.35, "EdgeColor", "none", "HitTest", "off", ...
+    % Best score of the previous sessions, written between the two buttons.
+    % The main program saves it with setappdata before drawing the menu;
+    % nothing is written if the player has not scored yet.
+    menu_best = getappdata(figure_handle, "menu_best");
+    if ~isempty(menu_best) && menu_best > 0
+        menu_handles(end + 1) = text(50.25, 20.1, sprintf("BEST SCORE: %d", menu_best), ...
+            "HorizontalAlignment", "center", "VerticalAlignment", "middle", "FontUnits", "normalized", ...
+            "FontSize", 0.034, "FontWeight", "bold", "Color", [0 0.03 0.1], "HitTest", "off", ...
+            "Parent", axes_handle);
+        menu_handles(end + 1) = text(50, 20.4, sprintf("BEST SCORE: %d", menu_best), ...
+            "HorizontalAlignment", "center", "VerticalAlignment", "middle", "FontUnits", "normalized", ...
+            "FontSize", 0.034, "FontWeight", "bold", "Color", [1 0.9 0.4], "HitTest", "off", ...
+            "Parent", axes_handle);
+    endif
+
+    % Keyboard reminder at the bottom, on two lines
+    menu_handles(end + 1) = patch("XData", [0 100 100 0], "YData", [0 0 8.3 8.3], "FaceColor", [0 0.05 0.15], ...
+                                  "FaceAlpha", 0.55, "EdgeColor", "none", "HitTest", "off", ...
                                   "Parent", axes_handle);
-    menu_handles(end + 1) = text(50, 7, "CLICK PLAY (or ENTER)     S = settings     M = sound on/off     ESC = quit", ...
+    menu_handles(end + 1) = text(50, 5.6, "CLICK PLAY  or press ENTER", ...
         "HorizontalAlignment", "center", "VerticalAlignment", "middle", "FontUnits", "normalized", ...
-        "FontSize", 0.028, "Color", [0.85 0.95 1], "HitTest", "off", "Parent", axes_handle);
+        "FontSize", 0.036, "FontWeight", "bold", "Color", [1 0.9 0.4], "HitTest", "off", ...
+        "Parent", axes_handle);
+    menu_handles(end + 1) = text(50, 2.5, "S = settings      M = sound on/off      ESC = quit", ...
+        "HorizontalAlignment", "center", "VerticalAlignment", "middle", "FontUnits", "normalized", ...
+        "FontSize", 0.033, "Color", [0.9 0.97 1], "HitTest", "off", "Parent", axes_handle);
 endfunction
 
 %--------------------------------------------------------------------------
@@ -694,59 +956,75 @@ endfunction
 %--------------------------------------------------------------------------
 function show_settings(figure_handle, axes_handle)
     items = [];
-    % Draw the dark background and settings panel
+    % Dim everything behind, then the panel (with a shadow) and its header
     items(end + 1) = patch("XData", [0 100 100 0], "YData", [0 0 60 60], "FaceColor", [0 0 0], ...
-                           "FaceAlpha", 0.65, "EdgeColor", "none", "Parent", axes_handle);
+                           "FaceAlpha", 0.70, "EdgeColor", "none", "Parent", axes_handle);
+    items(end + 1) = patch("XData", [7.5 95.5 95.5 7.5], "YData", [1.5 1.5 55.5 55.5], "FaceColor", [0 0 0], ...
+                           "FaceAlpha", 0.5, "EdgeColor", "none", "Parent", axes_handle);
     items(end + 1) = patch("XData", [6 94 94 6], "YData", [3 3 57 57], "FaceColor", [0.04 0.18 0.32], ...
-                           "EdgeColor", [1 1 1], "LineWidth", 2.5, "Parent", axes_handle);
-    items(end + 1) = text(52.4, 50.8, "SETTINGS", "HorizontalAlignment", "center", ...
+                           "EdgeColor", [1 1 1], "LineWidth", 3, "Parent", axes_handle);
+    items(end + 1) = patch("XData", [6 94 94 6], "YData", [47.5 47.5 57 57], "FaceColor", [0.07 0.32 0.52], ...
+                           "EdgeColor", "none", "Parent", axes_handle);
+    items(end + 1) = line("XData", [6 94], "YData", [47.5 47.5], "Color", [1 0.85 0.2], ...
+                          "LineWidth", 2.5, "Parent", axes_handle);
+    items(end + 1) = text(52.4, 51.7, "SETTINGS", "HorizontalAlignment", "center", ...
                           "VerticalAlignment", "middle", "FontUnits", "normalized", "FontSize", 0.075, ...
                           "FontWeight", "bold", "Color", [0 0 0], "Parent", axes_handle);
-    items(end + 1) = text(52, 51.5, "SETTINGS", "HorizontalAlignment", "center", ...
+    items(end + 1) = text(52, 52.3, "SETTINGS", "HorizontalAlignment", "center", ...
                           "VerticalAlignment", "middle", "FontUnits", "normalized", "FontSize", 0.075, ...
                           "FontWeight", "bold", "Color", [1 0.85 0.2], "Parent", axes_handle);
-    items = [items, draw_gear(axes_handle, 31, 51.5, 2.8, [1 0.85 0.2], [0.04 0.18 0.32])];
+    items = [items, draw_gear(axes_handle, 30, 52.3, 3.2, [1 0.85 0.2], [0.07 0.32 0.52])];
 
-    % Show the game instructions
-    rows = { 45.4, "THE GOAL", 1;
-             42.0, "Cross 5 levels. In each one, eat smaller fish to grow,", 0;
-             39.1, "then beat the BOSS: get bigger than it and EAT it!", 0;
-             34.4, "HOW TO PLAY", 1;
-             31.0, "Swim: arrow keys  or  Z Q S D  /  W A S D", 0;
-             28.1, "Green = edible    Yellow = same size    Red = DANGER", 0;
-             25.2, "Red fish hunt you and bite: you lose a life and shrink", 0;
-             22.3, "Red dashed line = the boss is about to charge!", 0;
-             19.4, "SPACE = stop   P = settings   M = sound/music on-off   ESC = quit", 0 };
+    % Texts: headings in gold (big), lines in white (big enough to read easily)
+    rows = { 43.4, "THE GOAL", 1;
+             39.9, "Cross 5 levels: eat smaller fish to grow,", 0;
+             36.7, "then get bigger than the BOSS and EAT it!", 0;
+             32.6, "HOW TO PLAY", 1;
+             29.3, "Swim: arrow keys  or  Z Q S D  /  W A S D", 0;
+             23.2, "Red fish hunt you: you lose a life and shrink", 0;
+             20.4, "Red dashed line = the boss is about to charge!", 0;
+             17.6, "Glowing green fish: eat it to wipe out red fish!", 0;
+             14.8, "SPACE stop    P settings    M sound    ESC quit", 0 };
     for r = 1:size(rows, 1)
         if rows{r, 3}
             text_color = [1 0.85 0.2];
-            text_size = 0.04;
+            text_size = 0.05;
             text_weight = "bold";
         else
             text_color = [1 1 1];
-            text_size = 0.03;
+            text_size = 0.037;
             text_weight = "normal";
         endif
-        items(end + 1) = text(11, rows{r, 1}, rows{r, 2}, "HorizontalAlignment", "left", ...
+        items(end + 1) = text(12, rows{r, 1}, rows{r, 2}, "HorizontalAlignment", "left", ...
                               "VerticalAlignment", "middle", "FontUnits", "normalized", ...
                               "FontSize", text_size, "FontWeight", text_weight, "Color", text_color, ...
                               "Parent", axes_handle);
     endfor
+    % Colour legend: each word has the colour of the fish it describes
+    legend_text  = {"Green = edible", "Yellow = same size", "Red = DANGER"};
+    legend_x     = [12 38 67];
+    legend_color = {[0.45 1 0.55], [1 0.95 0.35], [1 0.40 0.35]};
+    for j = 1:3
+        items(end + 1) = text(legend_x(j), 26.1, legend_text{j}, "HorizontalAlignment", "left", ...
+                              "VerticalAlignment", "middle", "FontUnits", "normalized", ...
+                              "FontSize", 0.037, "FontWeight", "bold", "Color", legend_color{j}, ...
+                              "Parent", axes_handle);
+    endfor
 
-    % Create the sound and BACK buttons
-    sound_button = make_button(figure_handle, axes_handle, 30, 10.5, 34, 7.5, "SOUND: ON", ...
+    % Buttons: sound on/off (mute) and BACK
+    sound_button = make_button(figure_handle, axes_handle, 30, 8.6, 36, 8, "SOUND: ON", ...
                                [0.12 0.60 0.30], "click_sound", 0.045);
-    back_button  = make_button(figure_handle, axes_handle, 70, 10.5, 34, 7.5, "BACK", ...
+    back_button  = make_button(figure_handle, axes_handle, 70, 8.6, 36, 8, "BACK", ...
                                [0.15 0.40 0.70], "click_back", 0.05);
     items = [items, sound_button, back_button];
 
     done = false;
     while ~done && ishandle(figure_handle)
         if isequal(getappdata(figure_handle, "sound_on"), 1)
-            set(sound_button(4), "String", "SOUND: ON");
+            set(sound_button([4 6]), "String", "SOUND: ON");
             set(sound_button(2), "FaceColor", [0.12 0.60 0.30]);
         else
-            set(sound_button(4), "String", "SOUND: MUTED");
+            set(sound_button([4 6]), "String", "SOUND: MUTED");
             set(sound_button(2), "FaceColor", [0.55 0.20 0.20]);
         endif
         key = wait_for_key(figure_handle, {"click_sound", "m", "click_back", "escape", ...
@@ -797,6 +1075,7 @@ function [outcome, final_score] = play_round(figure_handle, axes_handle, level, 
     frame_pause     = 0.02;                        % pause between frames (seconds)
     size_tolerance  = 1.05;                        % size difference allowed
     enemy_count     = 7 + level;                   % more fish at each level
+    min_enemy_count = max(5, ceil(0.6 * enemy_count));   % fewest fish left when the player is big
     speed_factor    = 1 + 0.15 * (level - 1);      % faster fish at each level
     level_count     = numel(level_names);
 
@@ -842,13 +1121,129 @@ function [outcome, final_score] = play_round(figure_handle, axes_handle, level, 
     burst_age     = 0;                             % Sparkle effect
     burst_x       = 0;
     burst_y       = 0;
-    burst_angles  = linspace(0, 2*pi, 9)(1:8);     % Sparkle directions
-    hit_flash_frames = 0;                          % Red flash duration
-    shake_frames  = 0;                             % Screen shake duration
-    banner_frames = 100;                           % time the banner stay visible
+    burst_angles  = linspace(0, 2*pi, 17)(1:16);   % 16 sparkles around a circle
+    burst_ring    = repmat([1 0.6], 1, 8);         % two rings: outer and inner sparkles
+    hit_flash_frames = 0;                          % frames of red flash after a hit
+    shake_frames  = 0;                             % frames of screen shake
+    banner_frames = 100;                           % frames the banner stays visible
 
-    % Draw the background first
+    % --- Special green fish: eat it to wipe out the red fish around you ---
+    special_size    = 2.4;                         % size of the special fish
+    special_radius  = 45;                          % red fish closer than this are wiped out
+    special_speed   = 0.45;                        % swimming speed of the special fish
+    special_active  = false;                       % true while the special fish is in the sea
+    special_x       = 0;
+    special_y       = 0;
+    special_dir     = 1;
+    special_timer   = 200 + randi(150);            % frames before the first special fish
+    wave_age        = 0;                           % age of the green shock wave (0 = none)
+    wave_x          = 0;
+    wave_y          = 0;
+    wave_angles     = linspace(0, 2*pi, 41);
+    clear_flash_frames = 0;                        % frames of green flash when red fish are wiped out
+
+    % --- Extra details: combo, golden pearls, crabs, bubble trail, level tip ---
+    % These variables only store the state of the new details. The combo counts
+    % the fish eaten quickly one after the other, the pearl is a bonus that
+    % appears from time to time, the trail stores the bubbles behind the player
+    % and the tip is a short sentence shown at the start of each level.
+    combo_count   = 0;                             % fish eaten one after the other
+    combo_timer   = 0;                             % frames left to continue the combo
+    combo_window  = 90;                            % time allowed between two fish
+    best_combo    = 0;
+    fish_eaten    = 0;
+    pearl_active  = false;                         % true while a golden pearl is in the sea
+    pearl_x       = 0;
+    pearl_y       = 0;
+    pearl_age     = 0;
+    pearl_timer   = 150 + randi(150);              % frames before the first pearl
+    pearls_found  = 0;
+    trail_x       = zeros(1, 0);                   % bubbles left behind the player
+    trail_y       = zeros(1, 0);
+    trail_age     = zeros(1, 0);
+    tip_frames    = 140;                           % frames the level tip stays visible
+    level_tips    = {"Eat the GREEN fish to grow - avoid the RED ones!", ...
+                     "Barracudas are fast: eat fish in a row for COMBOS!", ...
+                     "Catch the golden PEARLS for bonus points!", ...
+                     "The heat makes fish aggressive. Watch the red dashed line!", ...
+                     "Last level: only the Megalodon stands in your way!"};
+
+    % --- More details: heart, shield, school of tiny fish, plankton, milestones ---
+    % Heart: gives back one lost life. It only appears if the player lost a life.
+    heart_active  = false;                         % true while a heart is in the sea
+    heart_x       = 0;
+    heart_y       = 0;
+    heart_age     = 0;
+    heart_timer   = 300 + randi(200);              % frames before a heart can appear
+    heart_t       = linspace(0, 2*pi, 40);         % the shape of the heart (formula of a heart curve)
+    heart_shape_x = sin(heart_t) .^ 3;
+    heart_shape_y = (13*cos(heart_t) - 5*cos(2*heart_t) - 2*cos(3*heart_t) - cos(4*heart_t)) / 16;
+    heart_ratio   = x_scale_ratio(axes_handle);    % keeps the heart looking correct
+    % Shield: protects the player from the next bite (or for 600 frames at most)
+    shield_active = false;                         % true while a shield bubble is in the sea
+    shield_x      = 0;
+    shield_y      = 0;
+    shield_age    = 0;
+    shield_timer  = 450 + randi(300);              % frames before a shield can appear
+    shield_frames = 0;                             % frames of protection left on the player
+    shield_angle  = linspace(0, 2*pi, 32);         % the ring around the player
+    % School of tiny fish and plankton, only for the decor of the background
+    school_count  = 12;
+    school_dx     = 12 * (rand(1, school_count) - 0.5);   % place of each fish inside the school
+    school_dy     = 5 * (rand(1, school_count) - 0.5);
+    school_cx     = world_width * rand;            % centre of the school
+    school_cy     = 20 + 20 * rand;
+    school_dir    = 2 * (rand > 0.5) - 1;
+    school_speed  = 0.18;
+    plankton_count = 25;
+    plankton_x    = world_width * rand(1, plankton_count);
+    plankton_y    = 8 + 48 * rand(1, plankton_count);
+    % Messages shown once when the player reaches a part of the way to the boss
+    milestone_start = false;
+    milestone_boss  = false;
+
+    % --- Bonus mission of the level ---
+    % Each level gives one small extra objective. It does not change the main
+    % rules of the game: the player can ignore it, but completing it gives a
+    % bonus score and makes the level feel more alive.
+    mission_names = {"Reef Snack", "Kelp Streak", "Treasure Hunter", ...
+                     "Heat Survivor", "Abyss Legend"};
+    mission_goal  = 3 + level;                     % fish to eat for the mission
+    mission_done  = false;                         % true when the mission is completed
+    mission_reward = 75 * level;                   % bonus points for the mission
+    mission_flash_frames = 0;                      % golden flash after the reward
+
+    % --- Draw the scene: decor first (objects drawn later are on top) ---
     [seaweed_handles, seaweed_base_x, seaweed_top_y, theme] = draw_sea_background(axes_handle, level);
+
+    % Two small crabs walking on the sea floor (decor only, they are harmless).
+    % Each crab is made of 4 parts: the legs, the claws, the shell and the eyes.
+    % They are drawn after the background, so they walk in front of the sand.
+    crab_count  = 2;
+    crab_x      = [20 70];
+    crab_dir    = [1 -1];
+    crab_speed  = [0.10 0.07];
+    crab_size   = [0.9 0.7];
+    crab_colors = [0.90 0.30 0.20; 0.95 0.45 0.15; 0.70 0.55 0.35; 0.60 0.10 0.05; 0.20 0.85 0.85];
+    crab_color  = crab_colors(level, :);
+    crab_body   = zeros(1, crab_count);
+    crab_claws  = zeros(1, crab_count);
+    crab_legs   = zeros(1, crab_count);
+    crab_eyes   = zeros(1, crab_count);
+    for k = 1:crab_count
+        crab_y = 3.6 + 1.2 * sin(crab_x(k) / 7) + 0.6 * sin(crab_x(k) / 3);
+        [cbx, cby, ccx, ccy, clx, cly] = crab_shape(crab_x(k), crab_y, crab_size(k), 0);
+        crab_legs(k)  = line("XData", clx, "YData", cly, "Color", 0.6 * crab_color, ...
+                             "LineWidth", 1.5, "Parent", axes_handle);
+        crab_claws(k) = line("XData", ccx, "YData", ccy, "Color", crab_color, ...
+                             "LineWidth", 2.5, "Parent", axes_handle);
+        crab_body(k)  = patch("XData", cbx, "YData", cby, "FaceColor", crab_color, ...
+                              "EdgeColor", 0.5 * crab_color, "Parent", axes_handle);
+        crab_eyes(k)  = line("XData", crab_x(k) + crab_size(k) * [-0.4 0.4], ...
+                             "YData", crab_y + crab_size(k) * [1.0 1.0], "LineStyle", "none", ...
+                             "Marker", "o", "MarkerSize", 3, "MarkerFaceColor", [1 1 1], ...
+                             "Color", [0 0 0], "Parent", axes_handle);
+    endfor
 
     % Dark silhouettes of fish swimming slowly far in the background
     sil_count   = 3;
@@ -868,6 +1263,15 @@ function [outcome, final_score] = play_round(figure_handle, axes_handle, level, 
                             "EdgeColor", "none", "Parent", axes_handle);
     endfor
 
+    % A school of tiny fish and some plankton in the background: only dots,
+    % drawn behind the real fish. The colour follows the colours of the level.
+    school_handle   = line("XData", school_cx + school_dx, "YData", school_cy + school_dy, ...
+                           "LineStyle", "none", "Marker", ".", "MarkerSize", 9, ...
+                           "Color", min(2 * theme.sil_color + 0.15, 1), "Parent", axes_handle);
+    plankton_handle = line("XData", plankton_x, "YData", plankton_y, "LineStyle", "none", ...
+                           "Marker", ".", "MarkerSize", 5, "Color", 0.8 * theme.bubble_color, ...
+                           "Parent", axes_handle);
+
     % Bubbles: 10 small and 5 big ones
     bubble_x = world_width * rand(1, 15);
     bubble_y = world_height * rand(1, 15);
@@ -884,6 +1288,11 @@ function [outcome, final_score] = play_round(figure_handle, axes_handle, level, 
                       "FaceAlpha", 0.22, "EdgeColor", "none", "Visible", "off", ...
                       "Parent", axes_handle);
 
+    % Bubble trail behind the swimming player: one line made only of markers,
+    % drawn before the player so the bubbles stay behind the fish
+    trail_handle = line("XData", [], "YData", [], "LineStyle", "none", "Marker", "o", ...
+                        "MarkerSize", 4, "Color", theme.bubble_color, "Parent", axes_handle);
+
     % Player graphics
     [bx, by, fx, fy, sx, sy, ex, ey] = fish_shape(player_x, player_y, player_size, player_dir_x, 0);
     player_fins   = patch("XData", fx, "YData", fy, "FaceColor", [0.85 0.35 0.05], ...
@@ -891,6 +1300,9 @@ function [outcome, final_score] = play_round(figure_handle, axes_handle, level, 
     player_body   = patch("XData", bx, "YData", by, "FaceColor", [1 0.65 0.1], ...
                           "EdgeColor", [0.4 0.2 0], "LineWidth", 1.5, "Parent", axes_handle);
     player_stripe = patch("XData", sx, "YData", sy, "FaceColor", [0.90 0.40 0.05], ...
+                          "EdgeColor", "none", "Parent", axes_handle);
+    [shx, shy]    = fish_shine(bx, by, player_x, player_y);
+    player_shine  = patch("XData", shx, "YData", shy, "FaceColor", [1 1 0.9], "FaceAlpha", 0.30, ...
                           "EdgeColor", "none", "Parent", axes_handle);
     player_eye    = line("XData", ex, "YData", ey, "LineStyle", "none", "Marker", "o", ...
                          "MarkerSize", 6, "MarkerFaceColor", [1 1 1], "Color", [0 0 0], ...
@@ -907,8 +1319,10 @@ function [outcome, final_score] = play_round(figure_handle, axes_handle, level, 
     enemy_fins    = zeros(1, enemy_count);
     enemy_stripe  = zeros(1, enemy_count);
     enemy_eye     = zeros(1, enemy_count);
+    enemy_shine   = zeros(1, enemy_count);
     enemy_teeth   = zeros(1, enemy_count);
     enemy_brow    = zeros(1, enemy_count);
+    enemy_on      = true(1, enemy_count);          % false = this fish is hidden (not in the sea now)
     for i = 1:enemy_count
         [enemy_x(i), enemy_y(i), enemy_size(i), enemy_dir(i), enemy_speed(i), enemy_species(i)] = ...
             spawn_enemy(player_size, speed_factor, small_probability, allowed_species, ...
@@ -920,6 +1334,9 @@ function [outcome, final_score] = play_round(figure_handle, axes_handle, level, 
         enemy_body(i)   = patch("XData", bx, "YData", by, "FaceColor", [0.5 0.5 0.5], ...
                                 "EdgeColor", [0.15 0.15 0.15], "Parent", axes_handle);
         enemy_stripe(i) = patch("XData", sx, "YData", sy, "FaceColor", [0.4 0.4 0.4], ...
+                                "EdgeColor", "none", "Parent", axes_handle);
+        [shx, shy]      = fish_shine(bx, by, enemy_x(i), enemy_y(i));
+        enemy_shine(i)  = patch("XData", shx, "YData", shy, "FaceColor", [1 1 1], "FaceAlpha", 0.22, ...
                                 "EdgeColor", "none", "Parent", axes_handle);
         enemy_eye(i)    = line("XData", ex, "YData", ey, "LineStyle", "none", "Marker", "o", ...
                                "MarkerSize", 4, "MarkerFaceColor", [1 1 1], "Color", [0 0 0], ...
@@ -945,6 +1362,9 @@ function [outcome, final_score] = play_round(figure_handle, axes_handle, level, 
                         "EdgeColor", [0.1 0 0], "LineWidth", 2.5, "Visible", "off", "Parent", axes_handle);
     boss_stripe = patch("XData", sx, "YData", sy, "FaceColor", [0.4 0.07 0.14], ...
                         "EdgeColor", "none", "Visible", "off", "Parent", axes_handle);
+    [shx, shy]  = fish_shine(bx, by, 0, 0);
+    boss_shine  = patch("XData", shx, "YData", shy, "FaceColor", [1 1 1], "FaceAlpha", 0.15, ...
+                        "EdgeColor", "none", "Visible", "off", "Parent", axes_handle);
     boss_eye    = line("XData", ex, "YData", ey, "LineStyle", "none", "Marker", "o", ...
                        "MarkerSize", 13, "MarkerFaceColor", [1 0 0], "Color", [0 0 0], ...
                        "Visible", "off", "Parent", axes_handle);
@@ -960,23 +1380,31 @@ function [outcome, final_score] = play_round(figure_handle, axes_handle, level, 
                         "Visible", "off", "Parent", axes_handle);
 
     % Effects: sparkles, floating points and banner
-    burst_handle = line("XData", zeros(1, 8), "YData", zeros(1, 8), "LineStyle", "none", ...
-                        "Marker", ".", "MarkerSize", 14, "Color", [1 0.95 0.4], ...
+    burst_handle = line("XData", zeros(1, 16), "YData", zeros(1, 16), "LineStyle", "none", ...
+                        "Marker", ".", "MarkerSize", 18, "Color", [1 0.95 0.4], ...
                         "Visible", "off", "Parent", axes_handle);
+    % (each text has a black copy behind it, copied from it at every frame)
+    popup_shadow = text(0, 0, "", "HorizontalAlignment", "center", "FontUnits", "normalized", ...
+                        "FontSize", 0.055, "FontWeight", "bold", "Color", [0 0 0], ...
+                        "Parent", axes_handle);
     popup_text = text(0, 0, "", "HorizontalAlignment", "center", "FontUnits", "normalized", ...
-                      "FontSize", 0.045, "FontWeight", "bold", "Color", [1 1 0.4], ...
+                      "FontSize", 0.055, "FontWeight", "bold", "Color", [1 1 0.4], ...
                       "Parent", axes_handle);
+    banner_shadow = text(50.35, 37.45, sprintf("LEVEL %d - %s", level, level_names{level}), ...
+                         "HorizontalAlignment", "center", "FontUnits", "normalized", ...
+                         "FontSize", 0.07, "FontWeight", "bold", "Color", [0 0 0], ...
+                         "Parent", axes_handle);
     banner_text = text(50, 38, sprintf("LEVEL %d - %s", level, level_names{level}), ...
                        "HorizontalAlignment", "center", "FontUnits", "normalized", ...
-                       "FontSize", 0.06, "FontWeight", "bold", "Color", [1 0.9 0.3], ...
+                       "FontSize", 0.07, "FontWeight", "bold", "Color", [1 0.9 0.3], ...
                        "Parent", axes_handle);
 
     % HUD top left: level, score, then the lives just below
     %      HUD top right: best score and the settings icon (gear)
     patch("XData", [0 38 38 0], "YData", [46.5 46.5 60 60], "FaceColor", [0 0.05 0.15], ...
-          "FaceAlpha", 0.55, "EdgeColor", "none", "Parent", axes_handle);
+          "FaceAlpha", 0.60, "EdgeColor", [0.55 0.80 1], "LineWidth", 1.5, "Parent", axes_handle);
     patch("XData", [62 100 100 62], "YData", [54 54 60 60], "FaceColor", [0 0.05 0.15], ...
-          "FaceAlpha", 0.55, "EdgeColor", "none", "Parent", axes_handle);
+          "FaceAlpha", 0.60, "EdgeColor", [0.55 0.80 1], "LineWidth", 1.5, "Parent", axes_handle);
     text(2, 57.6, sprintf("LEVEL %d/%d - %s", level, level_count, level_names{level}), ...
          "Parent", axes_handle, "FontUnits", "normalized", "FontSize", 0.032, "FontWeight", "bold", ...
          "Color", [1 0.9 0.3], "VerticalAlignment", "middle");
@@ -995,6 +1423,81 @@ function [outcome, final_score] = play_round(figure_handle, axes_handle, level, 
     best_hud = text(64, 57, "", "Parent", axes_handle, "FontUnits", "normalized", ...
                     "FontSize", 0.03, "FontWeight", "bold", "Color", [1 0.9 0.5], ...
                     "VerticalAlignment", "middle");
+    % Combo counter (orange text under the lives) and growth bar (top right).
+    % The bar is empty at the start of the level and full when the player is big
+    % enough to eat the boss: it shows how far the player is from the goal.
+    combo_hud = text(2, 43.8, "", "Parent", axes_handle, "FontUnits", "normalized", ...
+                     "FontSize", 0.04, "FontWeight", "bold", "Color", [1 0.7 0.2], ...
+                     "VerticalAlignment", "middle");
+    % Bonus mission HUD: a small line under the combo counter that shows the
+    % optional objective of the level and how close the player is to finishing it.
+    mission_hud = text(2, 40.7, "", "Parent", axes_handle, "FontUnits", "normalized", ...
+                       "FontSize", 0.031, "FontWeight", "bold", "Color", [0.9 0.95 1], ...
+                       "VerticalAlignment", "middle");
+    % Big growth bar: it is more visible than the first version. The dark box is
+    % the empty bar, the coloured rectangle fills it, the white line marks the
+    % current progress and the text writes the percent directly on the bar.
+    growth_left   = 58;
+    growth_right  = 98;
+    growth_bottom = 49.8;
+    growth_top    = 53.4;
+    patch("XData", [growth_left growth_right growth_right growth_left], ...
+          "YData", [growth_bottom growth_bottom growth_top growth_top], ...
+          "FaceColor", [0 0.04 0.12], "FaceAlpha", 0.78, ...
+          "EdgeColor", [0.55 0.80 1], "LineWidth", 2.2, "Parent", axes_handle);
+    growth_fill = patch("XData", [growth_left growth_left growth_left growth_left], ...
+                        "YData", [growth_bottom growth_bottom growth_top growth_top], ...
+                        "FaceColor", [0.3 0.9 0.4], "EdgeColor", "none", ...
+                        "Parent", axes_handle);
+    growth_marker = line("XData", [growth_left growth_left], "YData", [growth_bottom growth_top], ...
+                         "Color", [1 1 1], "LineWidth", 2.5, "Parent", axes_handle);
+    growth_percent = text((growth_left + growth_right) / 2, 51.6, "0%", "Parent", axes_handle, ...
+         "HorizontalAlignment", "center", "VerticalAlignment", "middle", ...
+         "FontUnits", "normalized", "FontSize", 0.043, "FontWeight", "bold", ...
+         "Color", [1 1 1]);
+    % Text of the progress bar. It changes during the game to show that this bar
+    % is the growth needed before the player can eat the boss and pass the level.
+    growth_text = text(growth_left, 48.2, "GROWTH TO BOSS SIZE", "Parent", axes_handle, ...
+         "FontUnits", "normalized", "FontSize", 0.027, "FontWeight", "bold", ...
+         "Color", [0.85 0.95 1], "VerticalAlignment", "middle");
+
+    % Tip of the level: a short sentence shown a few seconds at the start of the
+    % level, just under the level banner (a black copy behind gives a shadow)
+    tip_shadow = text(50.3, 33.2, level_tips{level}, "HorizontalAlignment", "center", ...
+                      "FontUnits", "normalized", "FontSize", 0.035, "FontWeight", "bold", ...
+                      "Color", [0 0 0], "Parent", axes_handle);
+    tip_text   = text(50, 33.7, level_tips{level}, "HorizontalAlignment", "center", ...
+                      "FontUnits", "normalized", "FontSize", 0.035, "FontWeight", "bold", ...
+                      "Color", [1 1 1], "Parent", axes_handle);
+
+    % Golden pearl (hidden until it appears): a white dot with a golden ring
+    % around it that grows and shrinks to make it shine
+    pearl_glow = line("XData", 0, "YData", 0, "LineStyle", "none", "Marker", "o", ...
+                      "MarkerSize", 16, "MarkerFaceColor", "none", "Color", [1 0.9 0.6], ...
+                      "LineWidth", 1.5, "Visible", "off", "Parent", axes_handle);
+    pearl_dot  = line("XData", 0, "YData", 0, "LineStyle", "none", "Marker", "o", ...
+                      "MarkerSize", 9, "MarkerFaceColor", [1 0.97 0.88], "Color", [0.85 0.75 0.55], ...
+                      "Visible", "off", "Parent", axes_handle);
+
+    % Heart (hidden until it appears): a pink heart with a ring around it
+    heart_patch = patch("XData", zeros(1, 40), "YData", zeros(1, 40), "FaceColor", [1 0.25 0.40], ...
+                        "EdgeColor", [1 1 1], "LineWidth", 1.5, "Visible", "off", "Parent", axes_handle);
+    heart_glow  = line("XData", 0, "YData", 0, "LineStyle", "none", "Marker", "o", ...
+                       "MarkerSize", 22, "MarkerFaceColor", "none", "Color", [1 0.6 0.7], ...
+                       "LineWidth", 1.5, "Visible", "off", "Parent", axes_handle);
+
+    % Shield: the bonus is a blue diamond inside a ring, and when it is collected
+    % a big transparent blue bubble (shield_ring) surrounds the player
+    shield_glow = line("XData", 0, "YData", 0, "LineStyle", "none", "Marker", "o", ...
+                       "MarkerSize", 22, "MarkerFaceColor", "none", "Color", [0.5 0.85 1], ...
+                       "LineWidth", 2.5, "Visible", "off", "Parent", axes_handle);
+    shield_dot  = line("XData", 0, "YData", 0, "LineStyle", "none", "Marker", "d", ...
+                       "MarkerSize", 10, "MarkerFaceColor", [0.7 0.95 1], "Color", [0.2 0.5 0.8], ...
+                       "Visible", "off", "Parent", axes_handle);
+    shield_ring = patch("XData", zeros(1, 32), "YData", zeros(1, 32), "FaceColor", [0.5 0.85 1], ...
+                        "FaceAlpha", 0.15, "EdgeColor", [0.6 0.9 1], "LineWidth", 2, ...
+                        "Visible", "off", "Parent", axes_handle);
+
     % Settings icon (gear on a small button): click it or press P
     gear_button = patch("XData", [91 98 98 91], "YData", [54.3 54.3 59.7 59.7], "FaceColor", [0.10 0.22 0.38], ...
           "FaceAlpha", 0.9, "EdgeColor", [1 1 1], "LineWidth", 1.5, ...
@@ -1008,6 +1511,35 @@ function [outcome, final_score] = play_round(figure_handle, axes_handle, level, 
     hit_flash = patch("XData", [0 100 100 0], "YData", [0 0 60 60], "FaceColor", [1 0 0], ...
                       "FaceAlpha", 0.30, "EdgeColor", "none", "Visible", "off", ...
                       "Parent", axes_handle);
+
+    % Golden flash over the whole screen when the bonus mission is completed.
+    % It is softer than the red hit flash because it is a reward effect.
+    mission_flash = patch("XData", [0 100 100 0], "YData", [0 0 60 60], "FaceColor", [1 0.85 0.20], ...
+                          "FaceAlpha", 0.20, "EdgeColor", "none", "Visible", "off", ...
+                          "Parent", axes_handle);
+
+    % Special green fish (hidden until it appears), its glow, shock wave and green flash
+    [bx, by, fx, fy, sx, sy, ex, ey] = fish_shape(0, 0, special_size, 1, 0, 1);
+    special_glow   = line("XData", 0, "YData", 0, "LineStyle", "none", "Marker", "o", ...
+                          "MarkerSize", 34, "MarkerFaceColor", "none", "Color", [1 1 0.5], ...
+                          "LineWidth", 2, "Visible", "off", "Parent", axes_handle);
+    special_fins   = patch("XData", fx, "YData", fy, "FaceColor", [0.10 0.70 0.25], ...
+                           "EdgeColor", [0.05 0.35 0.10], "Visible", "off", "Parent", axes_handle);
+    special_body   = patch("XData", bx, "YData", by, "FaceColor", [0.30 1.00 0.40], ...
+                           "EdgeColor", [1 1 0.5], "LineWidth", 2, "Visible", "off", "Parent", axes_handle);
+    special_stripe = patch("XData", sx, "YData", sy, "FaceColor", [1 1 0.4], ...
+                           "EdgeColor", "none", "Visible", "off", "Parent", axes_handle);
+    [shx, shy]     = fish_shine(bx, by, 0, 0);
+    special_shine  = patch("XData", shx, "YData", shy, "FaceColor", [1 1 1], "FaceAlpha", 0.35, ...
+                           "EdgeColor", "none", "Visible", "off", "Parent", axes_handle);
+    special_eye    = line("XData", ex, "YData", ey, "LineStyle", "none", "Marker", "o", ...
+                          "MarkerSize", 6, "MarkerFaceColor", [1 1 1], "Color", [0 0 0], ...
+                          "Visible", "off", "Parent", axes_handle);
+    special_wave   = line("XData", 0, "YData", 0, "Color", [0.5 1 0.6], "LineWidth", 5, ...
+                          "Visible", "off", "Parent", axes_handle);
+    clear_flash    = patch("XData", [0 100 100 0], "YData", [0 0 60 60], "FaceColor", [0.3 1 0.4], ...
+                           "FaceAlpha", 0.22, "EdgeColor", "none", "Visible", "off", ...
+                           "Parent", axes_handle);
 
     setappdata(figure_handle, "last_key", "");
     setappdata(figure_handle, "music_mode", "normal");     % normal music at the start of a level
@@ -1079,7 +1611,24 @@ function [outcome, final_score] = play_round(figure_handle, axes_handle, level, 
         else
             current_small_probability = small_probability;
         endif
+        % The bigger the player, the fewer fish in the sea (the last ones are hidden;
+        % if the player shrinks after a bite, they come back from the sides)
+        size_progress = min(max((player_size - start_size) / (boss_win_size - start_size), 0), 1);
+        active_count = enemy_count - floor(size_progress * (enemy_count - min_enemy_count));
         for i = 1:enemy_count
+            if i <= active_count && ~enemy_on(i)
+                [enemy_x(i), enemy_y(i), enemy_size(i), enemy_dir(i), enemy_speed(i), enemy_species(i)] = ...
+                    spawn_enemy(player_size, speed_factor, current_small_probability, allowed_species, ...
+                                world_width, world_height, player_x, player_y, false);
+                set([enemy_body(i), enemy_fins(i), enemy_stripe(i), enemy_shine(i), enemy_eye(i)], "Visible", "on");
+                enemy_on(i) = true;
+            elseif i > active_count && enemy_on(i)
+                set([enemy_body(i), enemy_fins(i), enemy_stripe(i), enemy_shine(i), enemy_eye(i), ...
+                     enemy_teeth(i), enemy_brow(i)], "Visible", "off");
+                enemy_on(i) = false;
+            endif
+        endfor
+        for i = 1:active_count
             enemy_is_big = enemy_size(i) > player_size * size_tolerance;
             enemy_distance = hypot(player_x - enemy_x(i), player_y - enemy_y(i));
             if enemy_is_big && enemy_distance < hunt_radius && invulnerable_frames == 0
@@ -1109,13 +1658,44 @@ function [outcome, final_score] = play_round(figure_handle, axes_handle, level, 
                 if player_size > enemy_size(i) * size_tolerance
                     % The player eats the fish and grow
                     points = round(10 * enemy_size(i));
+                    % Combo: if the last fish was eaten less than 90 frames ago, the combo
+                    % continues (+1), otherwise it starts again at 1. Each fish of the
+                    % combo gives 5 extra points (maximum 50) and the best combo is saved.
+                    if combo_timer > 0
+                        combo_count = combo_count + 1;
+                    else
+                        combo_count = 1;
+                    endif
+                    combo_timer = combo_window;
+                    best_combo  = max(best_combo, combo_count);
+                    fish_eaten  = fish_eaten + 1;
+                    points = points + 5 * min(combo_count - 1, 10);
+                    % Bonus mission: when enough fish have been eaten in this level,
+                    % the player gets a reward. This is only an extra challenge, so
+                    % it never blocks the normal progress to the boss.
+                    if ~mission_done && fish_eaten >= mission_goal
+                        mission_done = true;
+                        points = points + mission_reward;
+                        mission_flash_frames = 12;
+                        banner_frames = 90;
+                        set(banner_text, "String", sprintf("MISSION COMPLETE: %s!", upper(mission_names{level})), ...
+                            "Color", [1 0.85 0.2]);
+                    endif
                     play_sfx(figure_handle, "eat");
                     score = score + points;
                     player_size = player_size + growth_ratio * enemy_size(i);
                     burst_x = enemy_x(i);
                     burst_y = enemy_y(i);
                     burst_age = 1;
-                    set(popup_text, "String", sprintf("+%d", points), "Position", [burst_x, burst_y + 2]);
+                    if combo_count >= 2
+                        popup_label = sprintf("+%d  COMBO x%d", points, combo_count);
+                    else
+                        popup_label = sprintf("+%d", points);
+                    endif
+                    if mission_flash_frames == 12
+                        popup_label = sprintf("+%d  MISSION!", points);
+                    endif
+                    set(popup_text, "String", popup_label, "Position", [burst_x, burst_y + 2]);
                     [enemy_x(i), enemy_y(i), enemy_size(i), enemy_dir(i), enemy_speed(i), enemy_species(i)] = ...
                         spawn_enemy(player_size, speed_factor, current_small_probability, allowed_species, ...
                                     world_width, world_height, player_x, player_y, false);
@@ -1127,6 +1707,202 @@ function [outcome, final_score] = play_round(figure_handle, axes_handle, level, 
                 endif
             endif
         endfor
+
+        % 3b. Special green fish: it appears from time to time and is harmless.
+        %     Eating it wipes out all the dangerous (red) fish around the player.
+        if ~special_active
+            special_timer = special_timer - 1;
+            if special_timer <= 0
+                special_active = true;
+                special_dir = 2 * (rand > 0.5) - 1;
+                if special_dir == 1
+                    special_x = -4 * special_size;
+                else
+                    special_x = world_width + 4 * special_size;
+                endif
+                special_y = 14 + 28 * rand;
+                set([special_fins, special_body, special_stripe, special_shine, special_eye, special_glow], ...
+                    "Visible", "on");
+                if banner_frames == 0
+                    banner_frames = 90;
+                    set(banner_text, "String", "A SPECIAL GREEN FISH!", "Color", [0.4 1 0.5]);
+                endif
+            endif
+        else
+            special_x = special_x + special_dir * special_speed;
+            special_y = special_y + 0.10 * sin(0.08 * frame_count);
+            if (special_dir == 1 && special_x > world_width + 5 * special_size) || ...
+               (special_dir == -1 && special_x < -5 * special_size)
+                % It left the screen without being eaten
+                special_active = false;
+                special_timer = 100 + randi(50);
+                set([special_fins, special_body, special_stripe, special_shine, special_eye, special_glow], ...
+                    "Visible", "off");
+            elseif fish_overlap(player_x, player_y, player_size, special_x, special_y, special_size, 1)
+                % The player eats it: wipe out the red fish around
+                play_sfx(figure_handle, "power");
+                special_active = false;
+                special_timer = 200 + randi(150);
+                set([special_fins, special_body, special_stripe, special_shine, special_eye, special_glow], ...
+                    "Visible", "off");
+                wiped_count = 0;
+                for i = 1:active_count
+                    if enemy_size(i) > player_size * size_tolerance && ...
+                       hypot(player_x - enemy_x(i), player_y - enemy_y(i)) < special_radius
+                        % The red fish is replaced by a small fish coming from a side
+                        [enemy_x(i), enemy_y(i), enemy_size(i), enemy_dir(i), enemy_speed(i), enemy_species(i)] = ...
+                            spawn_enemy(player_size, speed_factor, 1, allowed_species, ...
+                                        world_width, world_height, player_x, player_y, false);
+                        wiped_count = wiped_count + 1;
+                    endif
+                endfor
+                score = score + 50;
+                burst_x = special_x;
+                burst_y = special_y;
+                burst_age = 1;
+                set(popup_text, "String", "+50", "Position", [burst_x, burst_y + 2]);
+                wave_age = 1;
+                wave_x = player_x;
+                wave_y = player_y;
+                clear_flash_frames = 8;
+                shake_frames = max(shake_frames, 10);
+                banner_frames = 90;
+                if wiped_count > 0
+                    set(banner_text, "String", sprintf("%d RED FISH WIPED OUT!", wiped_count), "Color", [0.4 1 0.5]);
+                else
+                    set(banner_text, "String", "NO RED FISH AROUND!", "Color", [0.4 1 0.5]);
+                endif
+            endif
+        endif
+
+        % 3c. Golden pearl: it appears from time to time at a random place, it is
+        %     harmless and gives bonus points (25 x level) if the player touches it.
+        %     It blinks at the end and disappears if nobody takes it.
+        if ~pearl_active
+            pearl_timer = pearl_timer - 1;
+            if pearl_timer <= 0
+                pearl_active = true;
+                pearl_age = 0;
+                pearl_x = 8 + 84 * rand;
+                pearl_y = 10 + 30 * rand;
+                set([pearl_glow, pearl_dot], "Visible", "on");
+            endif
+        else
+            pearl_age = pearl_age + 1;
+            pearl_draw_y = pearl_y + 0.5 * sin(0.15 * frame_count);
+            set(pearl_glow, "XData", pearl_x, "YData", pearl_draw_y, ...
+                "MarkerSize", 16 + 4 * sin(0.3 * frame_count));
+            set(pearl_dot, "XData", pearl_x, "YData", pearl_draw_y);
+            if hypot(player_x - pearl_x, player_y - pearl_draw_y) < 2 + player_size
+                % The player collects the pearl
+                pearl_active = false;
+                pearl_timer = 250 + randi(200);
+                pearls_found = pearls_found + 1;
+                score = score + 25 * level;
+                play_sfx(figure_handle, "pearl");
+                burst_x = pearl_x;
+                burst_y = pearl_draw_y;
+                burst_age = 1;
+                set(popup_text, "String", sprintf("+%d  PEARL", 25 * level), ...
+                    "Position", [burst_x, burst_y + 2]);
+                set([pearl_glow, pearl_dot], "Visible", "off");
+            elseif pearl_age > 350
+                % The pearl disappears if nobody takes it
+                pearl_active = false;
+                pearl_timer = 150 + randi(150);
+                set([pearl_glow, pearl_dot], "Visible", "off");
+            elseif pearl_age > 280 && mod(pearl_age, 8) < 4
+                set([pearl_glow, pearl_dot], "Visible", "off");    % blinks before it disappears
+            else
+                set([pearl_glow, pearl_dot], "Visible", "on");
+            endif
+        endif
+
+        % 3d. Heart: the timer only runs while the player has lost a life. When it
+        %     ends, a heart appears at a random place. If the player touches it, he
+        %     gets one life back (never more than at the start of the level).
+        %     The heart pulses, blinks at the end and disappears if nobody takes it.
+        if ~heart_active
+            if lives < initial_lives
+                heart_timer = heart_timer - 1;
+            endif
+            if heart_timer <= 0 && lives < initial_lives
+                heart_active = true;
+                heart_age = 0;
+                heart_x = 8 + 84 * rand;
+                heart_y = 10 + 30 * rand;
+                set([heart_patch, heart_glow], "Visible", "on");
+            endif
+        else
+            heart_age = heart_age + 1;
+            heart_draw_y = heart_y + 0.5 * sin(0.12 * frame_count);
+            heart_pulse = 1 + 0.12 * sin(0.35 * frame_count);
+            set(heart_patch, "XData", heart_x + 1.5 * heart_pulse * heart_ratio * heart_shape_x, ...
+                "YData", heart_draw_y + 1.5 * heart_pulse * heart_shape_y);
+            set(heart_glow, "XData", heart_x, "YData", heart_draw_y);
+            if hypot(player_x - heart_x, player_y - heart_draw_y) < 2 + player_size
+                % The player takes the heart: one life back
+                heart_active = false;
+                heart_timer = 500 + randi(300);
+                lives = min(lives + 1, initial_lives);
+                play_sfx(figure_handle, "heart");
+                burst_x = heart_x;
+                burst_y = heart_draw_y;
+                burst_age = 1;
+                set(popup_text, "String", "+1 LIFE", "Position", [burst_x, burst_y + 2]);
+                set([heart_patch, heart_glow], "Visible", "off");
+            elseif heart_age > 420
+                heart_active = false;
+                heart_timer = 300 + randi(200);
+                set([heart_patch, heart_glow], "Visible", "off");
+            elseif heart_age > 350 && mod(heart_age, 8) < 4
+                set([heart_patch, heart_glow], "Visible", "off");    % blinks before it disappears
+            else
+                set([heart_patch, heart_glow], "Visible", "on");
+            endif
+        endif
+
+        % 3e. Shield bonus: it appears from time to time (not while the player already
+        %     has a shield). If the player touches it, he gets a blue shield for
+        %     600 frames that absorbs the next bite (see the part where a life is lost).
+        if ~shield_active
+            shield_timer = shield_timer - 1;
+            if shield_timer <= 0 && shield_frames == 0
+                shield_active = true;
+                shield_age = 0;
+                shield_x = 8 + 84 * rand;
+                shield_y = 10 + 30 * rand;
+                set([shield_glow, shield_dot], "Visible", "on");
+            endif
+        else
+            shield_age = shield_age + 1;
+            shield_draw_y = shield_y + 0.5 * sin(0.10 * frame_count);
+            set(shield_glow, "XData", shield_x, "YData", shield_draw_y, ...
+                "MarkerSize", 22 + 4 * sin(0.3 * frame_count));
+            set(shield_dot, "XData", shield_x, "YData", shield_draw_y);
+            if hypot(player_x - shield_x, player_y - shield_draw_y) < 2 + player_size
+                % The player takes the shield
+                shield_active = false;
+                shield_timer = 600 + randi(300);
+                shield_frames = 600;
+                play_sfx(figure_handle, "shield");
+                burst_x = shield_x;
+                burst_y = shield_draw_y;
+                burst_age = 1;
+                set(popup_text, "String", "SHIELD!", "Position", [burst_x, burst_y + 2]);
+                banner_frames = 70;
+                set(banner_text, "String", "SHIELD ON: ONE FREE BITE!", "Color", [0.5 0.85 1]);
+                set([shield_glow, shield_dot], "Visible", "off");
+            elseif shield_age > 380
+                shield_active = false;
+                shield_timer = 300 + randi(200);
+                set([shield_glow, shield_dot], "Visible", "off");
+            elseif shield_age > 310 && mod(shield_age, 8) < 4
+                set([shield_glow, shield_dot], "Visible", "off");    % blinks before it disappears
+            else
+                set([shield_glow, shield_dot], "Visible", "on");
+            endif
+        endif
 
         % 4. Boss: arrival, behaviour and collision
         if ~boss_active && ~boss_defeated && player_size >= boss_trigger
@@ -1149,7 +1925,7 @@ function [outcome, final_score] = play_round(figure_handle, axes_handle, level, 
             set(boss_dark, "Visible", "on");
             play_sfx(figure_handle, "boss");
             setappdata(figure_handle, "music_mode", "boss");   % boss music
-            set([boss_fins, boss_body, boss_stripe, boss_eye], "Visible", "on");
+            set([boss_fins, boss_body, boss_stripe, boss_shine, boss_eye], "Visible", "on");
             if boss_species == 6
                 set(boss_glow, "Visible", "on");
             endif
@@ -1249,9 +2025,23 @@ function [outcome, final_score] = play_round(figure_handle, axes_handle, level, 
             endif
         endif
 
+        % If the player has a shield, it absorbs the bite: no life is lost, the shield
+        % disappears and the player is protected a short time (45 frames)
+        if player_hit && invulnerable_frames == 0 && shield_frames > 0
+            shield_frames = 0;
+            player_hit = false;
+            invulnerable_frames = 45;
+            shake_frames = max(shake_frames, 6);
+            play_sfx(figure_handle, "click");
+            banner_frames = 60;
+            set(banner_text, "String", "THE SHIELD ABSORBED THE BITE!", "Color", [0.5 0.85 1]);
+        endif
+
         % The player loses a life if touched by a dangerous fish
         if player_hit && invulnerable_frames == 0
             lives = lives - 1;
+            combo_count = 0;                                     % a bite breaks the combo
+            combo_timer = 0;
             play_sfx(figure_handle, "hit");
             invulnerable_frames = 60;
             player_size = max(start_size, player_size * 0.95);   % being eaten makes you smaller
@@ -1267,6 +2057,22 @@ function [outcome, final_score] = play_round(figure_handle, axes_handle, level, 
         bubble_x = bubble_x + 0.05 * sin(0.2 * frame_count + (1:15));
         bubble_y(bubble_y > world_height) = 0;
         update_seaweed(seaweed_handles, seaweed_base_x, seaweed_top_y, frame_count);
+        % Move the crabs: they walk on the sand (the height follows the dunes),
+        % turn around near the edges, and their claws and legs move
+        for k = 1:crab_count
+            crab_x(k) = crab_x(k) + crab_dir(k) * crab_speed(k);
+            if crab_x(k) < 4 || crab_x(k) > 96
+                crab_dir(k) = -crab_dir(k);
+            endif
+            crab_y = 3.6 + 1.2 * sin(crab_x(k) / 7) + 0.6 * sin(crab_x(k) / 3);
+            [cbx, cby, ccx, ccy, clx, cly] = crab_shape(crab_x(k), crab_y, crab_size(k), ...
+                                                        0.3 * frame_count + 2 * k);
+            set(crab_body(k), "XData", cbx, "YData", cby);
+            set(crab_claws(k), "XData", ccx, "YData", ccy);
+            set(crab_legs(k), "XData", clx, "YData", cly);
+            set(crab_eyes(k), "XData", crab_x(k) + crab_size(k) * [-0.4 0.4], ...
+                "YData", crab_y + crab_size(k) * [1.0 1.0]);
+        endfor
         for i = 1:sil_count
             sil_x(i) = sil_x(i) + sil_dir(i) * sil_speed(i);
             if sil_dir(i) == 1 && sil_x(i) > world_width + 15
@@ -1280,6 +2086,45 @@ function [outcome, final_score] = play_round(figure_handle, axes_handle, level, 
             set(sil_fins(i), "XData", fx, "YData", fy);
         endfor
 
+        % Move the school of tiny fish and the plankton (decor only):
+        %   - the school crosses the sea slowly and comes back on the other side
+        %   - each tiny fish wobbles a little so the school looks alive
+        %   - the school moves up or down to stay away from the player
+        %   - the plankton drifts to the right and goes up and down very slowly
+        school_cx = school_cx + school_dir * school_speed;
+        if school_dir == 1 && school_cx > world_width + 12
+            school_cx = -12;
+        elseif school_dir == -1 && school_cx < -12
+            school_cx = world_width + 12;
+        endif
+        if hypot(player_x - school_cx, player_y - school_cy) < 14
+            school_cy = min(max(school_cy + 0.4 * sign(school_cy - player_y + 0.01), 10), world_height - 12);
+        endif
+        set(school_handle, "XData", school_cx + school_dx + 0.8 * sin(0.15 * frame_count + (1:school_count)), ...
+            "YData", school_cy + school_dy + 0.5 * cos(0.20 * frame_count + (1:school_count)));
+        plankton_x = plankton_x + 0.03;
+        plankton_x(plankton_x > world_width) = 0;
+        plankton_y = plankton_y + 0.02 * sin(0.05 * frame_count + (1:plankton_count));
+        set(plankton_handle, "XData", plankton_x, "YData", plankton_y);
+
+        % Bubble trail behind the swimming fish:
+        %   - while the player moves, a new bubble is created behind him every 3 frames
+        %   - all the bubbles rise and move a little left and right
+        %   - a bubble is removed after 22 frames
+        if any(velocity ~= 0) && mod(frame_count, 3) == 0
+            trail_x(end + 1)   = player_x - player_dir_x * 0.9 * player_size + 0.3 * (rand - 0.5);
+            trail_y(end + 1)   = player_y + 0.3 * player_size * (rand - 0.5);
+            trail_age(end + 1) = 0;
+        endif
+        trail_y   = trail_y + 0.25;
+        trail_x   = trail_x + 0.04 * sin(0.5 * frame_count + trail_age);
+        trail_age = trail_age + 1;
+        trail_alive = trail_age < 22;
+        trail_x   = trail_x(trail_alive);
+        trail_y   = trail_y(trail_alive);
+        trail_age = trail_age(trail_alive);
+        set(trail_handle, "XData", trail_x, "YData", trail_y);
+
         % 6. Update the graphics of the player (tail swims faster when moving)
         if any(velocity ~= 0)
             player_wiggle = 0.25 * sin(0.7 * frame_count);
@@ -1291,6 +2136,8 @@ function [outcome, final_score] = play_round(figure_handle, axes_handle, level, 
         set(player_body, "XData", bx, "YData", by);
         set(player_fins, "XData", fx, "YData", fy);
         set(player_stripe, "XData", sx, "YData", sy);
+        [shx, shy] = fish_shine(bx, by, player_x, player_y);
+        set(player_shine, "XData", shx, "YData", shy);
         set(player_eye, "XData", ex, "YData", ey, "MarkerSize", max(5, min(10, 2 + player_size)));
         % Blink while the player is protected
         if invulnerable_frames > 0 && mod(frame_count, 6) < 3
@@ -1298,10 +2145,26 @@ function [outcome, final_score] = play_round(figure_handle, axes_handle, level, 
         else
             visible_state = "on";
         endif
-        set([player_body, player_fins, player_stripe, player_eye], "Visible", visible_state);
+        set([player_body, player_fins, player_stripe, player_shine, player_eye], "Visible", visible_state);
 
-        % Update the graphics of the enemies
-        for i = 1:enemy_count
+        % Shield bubble around the player: a transparent blue ellipse a little bigger
+        % than the fish (it follows the player and his size). It counts down and
+        % blinks during its last 90 frames, then it disappears.
+        if shield_frames > 0
+            shield_frames = shield_frames - 1;
+            if shield_frames < 90 && mod(shield_frames, 8) < 4
+                set(shield_ring, "Visible", "off");
+            else
+                set(shield_ring, "XData", player_x - player_dir_x * 0.4 * player_size ...
+                                          + (1.9 * player_size + 0.6) * cos(shield_angle), ...
+                    "YData", player_y + (1.0 * player_size + 0.7) * sin(shield_angle), "Visible", "on");
+            endif
+        else
+            set(shield_ring, "Visible", "off");
+        endif
+
+        % Update the graphics of the enemies (only the ones in the sea)
+        for i = 1:active_count
             [bx, by, fx, fy, sx, sy, ex, ey] = fish_shape(enemy_x(i), enemy_y(i), enemy_size(i), ...
                 enemy_dir(i), 0.25 * sin(0.5 * frame_count + i), enemy_species(i));
             % Colour of the fish can be green, yellow or red
@@ -1325,6 +2188,8 @@ function [outcome, final_score] = play_round(figure_handle, axes_handle, level, 
                 "EdgeColor", body_edge, "LineWidth", body_edge_width);
             set(enemy_fins(i), "XData", fx, "YData", fy, "FaceColor", 0.7 * fish_color);
             set(enemy_stripe(i), "XData", sx, "YData", sy, "FaceColor", 0.75 * fish_color);
+            [shx, shy] = fish_shine(bx, by, enemy_x(i), enemy_y(i));
+            set(enemy_shine(i), "XData", shx, "YData", shy);
             if is_dangerous
                 % Scary face: red eye, angry brow and teeth
                 [tx, ty, brx, bry] = fish_menace(enemy_x(i), enemy_y(i), enemy_size(i), ...
@@ -1372,6 +2237,8 @@ function [outcome, final_score] = play_round(figure_handle, axes_handle, level, 
             set(boss_body, "XData", bx, "YData", by, "FaceColor", boss_color, "EdgeColor", boss_edge);
             set(boss_fins, "XData", fx, "YData", fy, "FaceColor", 0.7 * boss_color);
             set(boss_stripe, "XData", sx, "YData", sy, "FaceColor", 0.75 * boss_color);
+            [shx, shy] = fish_shine(bx, by, draw_x, draw_y);
+            set(boss_shine, "XData", shx, "YData", shy);
             set(boss_eye, "XData", ex, "YData", ey);
             if boss_edible
                 % Scared boss: no fangs, no aura, normal eye
@@ -1405,7 +2272,37 @@ function [outcome, final_score] = play_round(figure_handle, axes_handle, level, 
             endif
         elseif boss_defeated
             set([boss_fins, boss_body, boss_stripe, boss_eye, boss_glow, boss_aim, boss_warning, ...
-                 boss_teeth, boss_brow, boss_aura, boss_dark], "Visible", "off");
+                 boss_teeth, boss_brow, boss_aura, boss_dark, boss_shine], "Visible", "off");
+        endif
+
+        % Update the special green fish, the green shock wave and the green flash
+        if special_active
+            [bx, by, fx, fy, sx, sy, ex, ey] = fish_shape(special_x, special_y, special_size, special_dir, ...
+                                                          0.25 * sin(0.5 * frame_count), 1);
+            set(special_body, "XData", bx, "YData", by);
+            set(special_fins, "XData", fx, "YData", fy);
+            set(special_stripe, "XData", sx, "YData", sy);
+            [shx, shy] = fish_shine(bx, by, special_x, special_y);
+            set(special_shine, "XData", shx, "YData", shy);
+            set(special_eye, "XData", ex, "YData", ey);
+            set(special_glow, "XData", special_x, "YData", special_y, ...
+                "MarkerSize", 34 + 6 * sin(0.3 * frame_count));
+        endif
+        if wave_age > 0
+            wave_radius = 3 + 2.6 * wave_age;
+            set(special_wave, "XData", wave_x + wave_radius * cos(wave_angles), ...
+                "YData", wave_y + 0.6 * wave_radius * sin(wave_angles), "Visible", "on");
+            wave_age = wave_age + 1;
+            if wave_age > 17
+                wave_age = 0;
+                set(special_wave, "Visible", "off");
+            endif
+        endif
+        if clear_flash_frames > 0
+            set(clear_flash, "Visible", "on");
+            clear_flash_frames = clear_flash_frames - 1;
+        else
+            set(clear_flash, "Visible", "off");
         endif
 
         % Update the bubbles
@@ -1415,8 +2312,8 @@ function [outcome, final_score] = play_round(figure_handle, axes_handle, level, 
         % Update the sparkles and the floating points
         if burst_age > 0
             burst_radius = 1 + 0.6 * burst_age;
-            set(burst_handle, "XData", burst_x + burst_radius * cos(burst_angles), ...
-                "YData", burst_y + burst_radius * sin(burst_angles), "Visible", "on");
+            set(burst_handle, "XData", burst_x + burst_radius * burst_ring .* cos(burst_angles), ...
+                "YData", burst_y + burst_radius * burst_ring .* sin(burst_angles), "Visible", "on");
             popup_position = get(popup_text, "Position");
             set(popup_text, "Position", [popup_position(1), popup_position(2) + 0.35]);
             burst_age = burst_age + 1;
@@ -1426,6 +2323,12 @@ function [outcome, final_score] = play_round(figure_handle, axes_handle, level, 
                 set(popup_text, "String", "");
             endif
         endif
+
+        % Black copies behind the floating points and the banner (shadow effect)
+        popup_position = get(popup_text, "Position");
+        set(popup_shadow, "String", get(popup_text, "String"), ...
+            "Position", [popup_position(1) + 0.25, popup_position(2) - 0.45]);
+        set(banner_shadow, "String", get(banner_text, "String"));
 
         % Update the banner, the red flash and the screen shake
         if banner_frames > 0
@@ -1440,6 +2343,12 @@ function [outcome, final_score] = play_round(figure_handle, axes_handle, level, 
         else
             set(hit_flash, "Visible", "off");
         endif
+        if mission_flash_frames > 0
+            set(mission_flash, "Visible", "on", "FaceAlpha", 0.05 + 0.02 * mission_flash_frames);
+            mission_flash_frames = mission_flash_frames - 1;
+        else
+            set(mission_flash, "Visible", "off");
+        endif
         if shake_frames > 0
             shake_offset = 1.2 * (2 * rand(1, 2) - 1);
             set(axes_handle, "XLim", [0 world_width] + shake_offset(1), ...
@@ -1447,6 +2356,70 @@ function [outcome, final_score] = play_round(figure_handle, axes_handle, level, 
             shake_frames = shake_frames - 1;
             if shake_frames == 0
                 set(axes_handle, "XLim", [0 world_width], "YLim", [0 world_height]);
+            endif
+        endif
+
+        % Update the combo timer and counter, the growth bar and the level tip:
+        %   - the combo ends when the timer reaches 0
+        %   - the growth bar is recalculated here with the current player size,
+        %     so it moves correctly after eating fish or losing size
+        %   - the bar becomes golden when the player can eat the boss
+        %   - the tip is erased after a few seconds
+        if combo_timer > 0
+            combo_timer = combo_timer - 1;
+            if combo_timer == 0
+                combo_count = 0;
+            endif
+        endif
+        if combo_count >= 2
+            set(combo_hud, "String", sprintf("COMBO x%d", combo_count));
+        else
+            set(combo_hud, "String", "");
+        endif
+        % Update the bonus mission line. Before the reward, it shows the progress;
+        % after the reward, it stays as a small golden success message.
+        if mission_done
+            set(mission_hud, "String", sprintf("MISSION: %s COMPLETE", upper(mission_names{level})), ...
+                "Color", [1 0.85 0.2]);
+        else
+            set(mission_hud, "String", sprintf("MISSION: eat %d/%d fish", ...
+                min(fish_eaten, mission_goal), mission_goal), "Color", [0.9 0.95 1]);
+        endif
+        size_progress = min(max((player_size - start_size) / (boss_win_size - start_size), 0), 1);
+        if size_progress >= 1
+            growth_color = [1 0.85 0.2];                     % big enough to eat the boss
+        else
+            growth_color = [0.3 0.9 0.4];
+        endif
+        growth_x = growth_left + (growth_right - growth_left) * size_progress;
+        set(growth_fill, "XData", [growth_left growth_x growth_x growth_left], ...
+            "YData", [growth_bottom growth_bottom growth_top growth_top], ...
+            "FaceColor", growth_color);
+        set(growth_marker, "XData", [growth_x growth_x], "YData", [growth_bottom growth_top]);
+        set(growth_percent, "String", sprintf("%d%%", round(100 * size_progress)));
+        if size_progress >= 1
+            set(growth_text, "String", "READY: EAT THE BOSS!", "Color", [1 0.85 0.2]);
+        else
+            set(growth_text, "String", "GROWTH TO BOSS SIZE", "Color", [0.85 0.95 1]);
+        endif
+        % Milestones: a message when the player is 30 percent of the way to the boss
+        % size, and another one when the boss is on the screen and the player is
+        % close (80 percent) to being big enough. Each message is shown only once
+        % and only when no other banner is on the screen.
+        if ~milestone_start && size_progress >= 0.3 && banner_frames == 0
+            milestone_start = true;
+            banner_frames = 70;
+            set(banner_text, "String", "GOOD START! KEEP GROWING", "Color", [1 0.9 0.3]);
+        endif
+        if ~milestone_boss && boss_active && ~boss_edible && size_progress >= 0.8 && banner_frames == 0
+            milestone_boss = true;
+            banner_frames = 80;
+            set(banner_text, "String", "ALMOST BIG ENOUGH TO EAT THE BOSS!", "Color", [0.4 1 0.5]);
+        endif
+        if tip_frames > 0
+            tip_frames = tip_frames - 1;
+            if tip_frames == 0
+                set([tip_text, tip_shadow], "String", "");
             endif
         endif
 
@@ -1480,6 +2453,7 @@ function [outcome, final_score] = play_round(figure_handle, axes_handle, level, 
     endwhile
     set(axes_handle, "XLim", [0 world_width], "YLim", [0 world_height]);
     setappdata(figure_handle, "music_mode", "normal");
+    setappdata(figure_handle, "round_stats", [fish_eaten, best_combo, pearls_found, mission_done]);
     final_score = score;
 endfunction
 
@@ -1526,6 +2500,7 @@ setappdata(figure_handle, "music_boss", music_boss);
 setappdata(figure_handle, "music_mode", "normal");
 update_music(figure_handle);
 
+setappdata(figure_handle, "menu_best", best_score);    % the menu shows the best score
 draw_sea_background(axes_handle, 1);
 menu_handles = draw_title_menu(figure_handle, axes_handle);
 in_menu = true;
@@ -1565,24 +2540,43 @@ while keep_playing && ishandle(figure_handle)
         save_best_score(best_score_file, best_score);
     endif
 
+    % Small statistics of the round (fish eaten, best combo, pearls found,
+    % and bonus mission completed or not).
+    % play_round saves them with setappdata, here we read them to show them
+    % on the end screens. If the round was quit, there are no statistics.
+    round_stats = getappdata(figure_handle, "round_stats");
+    if isempty(round_stats)
+        round_stats = [0 0 0 0];
+    endif
+    if numel(round_stats) < 4
+        round_stats(4) = 0;
+    endif
+    if round_stats(4)
+        mission_text = "Mission: complete";
+    else
+        mission_text = "Mission: missed";
+    endif
+    stats_line = sprintf("Fish eaten: %d    Best combo: x%d    Pearls: %d    %s", ...
+                         round_stats(1), round_stats(2), round_stats(3), mission_text);
+
     % End of the level: win, final win, lose or quit screen
     if strcmp(outcome, "win") && level < level_count
         total_score = round_score;                     % the score is kept for the next level
         end_text = {sprintf("Boss defeated! Level %d cleared!", level), "", ...
-                    sprintf("Score: %d    Best score: %d", round_score, best_score), "", ...
+                    sprintf("Score: %d    Best score: %d", round_score, best_score), stats_line, "", ...
                     sprintf("R = go to level %d (new decor, harder boss)", level + 1), "ESC = quit"};
         end_screen = show_screen(axes_handle, "LEVEL CLEARED!", end_text, [0.1 0.45 0.2]);
         level = level + 1;
     elseif strcmp(outcome, "win")
         end_text = {"You defeated all 5 bosses!", "", ...
-                    sprintf("Final score: %d    Best score: %d", round_score, best_score), "", ...
+                    sprintf("Final score: %d    Best score: %d", round_score, best_score), stats_line, "", ...
                     "R = start a new game", "ESC = quit"};
         end_screen = show_screen(axes_handle, "KING OF THE ABYSS!", end_text, [0.45 0.35 0.05]);
         level = 1;                                     % new game
         total_score = 0;
     elseif strcmp(outcome, "lose")
         end_text = {sprintf("You were eaten on level %d!", level), "", ...
-                    sprintf("Score: %d    Best score: %d", round_score, best_score), "", ...
+                    sprintf("Score: %d    Best score: %d", round_score, best_score), stats_line, "", ...
                     "R = retry this level (new random fish)", "ESC = quit"};
         end_screen = show_screen(axes_handle, "GAME OVER", end_text, [0.55 0.15 0.15]);
     else
